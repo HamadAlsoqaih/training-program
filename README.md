@@ -5,17 +5,16 @@ program. All 105 days encoded exactly (phases, volume ramps, deloads, per-week t
 with progress tracking, timers, weight logging and a progress dashboard.
 No backend, no login — everything lives on your phone.
 
-## Get it on your iPhone (one-time setup)
+## Get it on your iPhone
 
-1. **Enable GitHub Pages** (repo owner, one click):
-   *GitHub → this repo → Settings → Pages → "Build and deployment" → Source: **GitHub Actions***.
-   The included workflow (`.github/workflows/pages.yml`) then deploys automatically on every push.
-   - Note: by default the `github-pages` environment only allows deploys from the default
-     branch. Either merge this branch into `main`, or add the branch under
-     *Settings → Environments → github-pages → Deployment branches*.
-2. Open the site URL on your iPhone: `https://<your-username>.github.io/personal-15week-program/`
-3. In Safari: **Share → Add to Home Screen**. You now have a full-screen app that works
+1. Open the site on your iPhone:
+   **https://hamadalsoqaih.github.io/personal-15week-program/**
+2. In Safari: **Share → Add to Home Screen**. You now have a full-screen app that works
    offline at the gym.
+
+Deployment: every push to the main development branch runs the fidelity tests and
+publishes the site to the `gh-pages` branch (`.github/workflows/pages.yml`), which
+GitHub Pages serves. No manual steps.
 
 ## Features
 

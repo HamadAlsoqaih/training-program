@@ -41,7 +41,7 @@ function render(opts = {}) {
     case 'program':
       el = renderProgram(); tab = 'program'; break;
     case 'week':
-      el = renderWeek(+arg); tab = 'program'; break;
+      el = renderWeek(+arg, rerender); tab = 'program'; break;
     case 'progress':
       el = renderProgress(rerender); tab = 'progress'; break;
     case 'settings':

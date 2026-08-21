@@ -21,7 +21,8 @@ import {
   startSession, pauseSession, resumeSession, finishSession, sessionElapsedMs,
   setSessionElapsed, fmtMs, startCountdown, unlockAudio, chime,
 } from '../timers.js';
-import { historySheet, noteSheet, skipSheet, summarySheet, durationSheet, textSheet } from './sheets.js';
+import { historySheet, noteSheet, skipSheet, summarySheet, durationSheet, textSheet, whereAmISheet } from './sheets.js';
+import { isSwapped } from '../schedule.js';
 
 let timerInterval = null;
 
@@ -54,14 +55,19 @@ export function renderDay(dayId, rerender) {
     }, '‹'),
     h('div', { class: 'center grow' },
       h('a', { class: 'h1', style: 'display:block', href: `#/week/${day.week}` },
-        `Week ${day.week} · ${weekdayName(day.d)}`),
+        `Week ${day.week} · ${weekdayName(day.d, day.week)}`),
       h('div', { class: 'row', style: 'justify-content:center;gap:6px;margin-top:4px;flex-wrap:wrap' },
         h('span', { class: 'chip', style: `color:${week.phase.color};border-color:${week.phase.color}44` }, week.phase.name),
         date ? h('span', { class: 'chip' }, fmtDate(date)) : null,
         isToday ? h('span', { class: 'chip accent' }, 'TODAY') : null,
         prog.status === 'done' ? h('span', { class: 'chip good' }, rec.auto ? '✓ done (assumed)' : '✓ done') : null,
         prog.status === 'skipped' ? h('span', { class: 'chip bad' }, 'skipped') : null,
+        isSwapped(day.week, day.d) ? h('span', { class: 'chip info' }, '⇄ swapped') : null,
       ),
+      isToday ? h('button', {
+        class: 'tiny faint', style: 'margin-top:4px;text-decoration:underline',
+        onclick: () => whereAmISheet(rerender),
+      }, 'wrong week? fix it') : null,
     ),
     h('button', {
       class: 'navbtn', disabled: index === 104,
@@ -166,7 +172,7 @@ export function renderDay(dayId, rerender) {
 
 const labelFor = (dayId) => {
   const d = getDay(dayId);
-  return `Week ${d.week} · ${weekdayName(d.d)}`;
+  return `Week ${d.week} · ${weekdayName(d.d, d.week)}`;
 };
 
 function restDayCard(dayId, prog, rerender, emoji, title, text) {
@@ -385,9 +391,17 @@ function exerciseCard(dayId, entry, currentKey, rerender) {
     }, h('span', { class: 'lbl' }, ticked ? '✓' : label));
 
     if (repsBased) {
+      const stepBtn = (d) => h('button', {
+        class: 'step', 'aria-label': d > 0 ? 'add 2.5 kg' : 'remove 2.5 kg',
+        onclick: () => {
+          const cur = wIn.value !== '' ? +wIn.value : 0;
+          wIn.value = String(Math.max(0, Math.round((cur + d) * 10) / 10));
+          saveLog();
+        },
+      }, d > 0 ? '+' : '−');
       setsWrap.append(h('div', { class: 'setrow' }, tick,
         h('div', { class: 'loginputs' },
-          wIn, h('span', { class: 'unit' }, 'KG'), rIn, h('span', { class: 'unit' }, 'REPS'))));
+          stepBtn(-2.5), wIn, stepBtn(2.5), rIn, h('span', { class: 'unit' }, 'REPS'))));
     } else {
       setsWrap.append(tick);
     }

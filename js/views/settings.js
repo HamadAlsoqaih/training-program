@@ -5,8 +5,9 @@ import { h, toast } from '../util.js';
 import * as store from '../state.js';
 import { seedBefore } from '../completion.js';
 import {
-  idToIndex, toISO, DEFAULT_DAY_MAP, WEEKDAY_NAMES, dayMap,
+  idToIndex, toISO, DEFAULT_DAY_MAP, WEEKDAY_NAMES, dayMap, todayIndex,
 } from '../schedule.js';
+import { whereAmISheet } from './sheets.js';
 
 const DAY_SLOTS = [
   'Plyo + Leg Press & Hip Thrust',
@@ -192,31 +193,17 @@ export function renderSettings(rerender) {
   };
 
   // schedule editing
-  const m0 = /w(\d+)d(\d)/.exec(s.setup.anchorDay);
-  const mapper = dayMapEditor(dayMap(), () => rebuildDayOptions());
-  const weekSel = h('select', { class: 'sel' },
-    ...Array.from({ length: 15 }, (_, i) => h('option', { value: i + 1, selected: i + 1 === +m0[1] }, `Week ${i + 1}`)));
-  const daySel = h('select', { class: 'sel' });
-  const rebuildDayOptions = () => {
-    const m = mapper.getMap();
-    const cur = +daySel.value || +m0[2];
-    daySel.replaceChildren(...Array.from({ length: 7 }, (_, i) =>
-      h('option', { value: i + 1, selected: i + 1 === cur }, `Day ${i + 1} — ${WEEKDAY_NAMES[m[i + 1]]}`)));
-  };
-  rebuildDayOptions();
-  const dateIn = h('input', { class: 'txt', type: 'date', value: s.setup.anchorDate || '' });
-  const rollSel = h('select', { class: 'sel' },
+  const mapper = dayMapEditor(dayMap(), () => {});
+  const rollSel = h('select', {
+    class: 'sel',
+    onchange: () => { store.update((st) => { st.setup.rolloverHour = +rollSel.value; }); toast('Rollover updated'); },
+  },
     ...[0, 1, 2, 3, 4, 5, 6].map((hh) => h('option', { value: hh, selected: hh === s.setup.rolloverHour },
       hh === 0 ? 'Midnight (no grace)' : `${hh} AM`)));
-  const saveSchedule = () => {
+  const saveWeekdays = () => {
     if (!mapper.isValid()) { toast('Fix the duplicate weekdays first'); return; }
-    store.update((st) => {
-      st.setup.anchorDay = `w${weekSel.value}d${daySel.value}`;
-      if (dateIn.value) st.setup.anchorDate = dateIn.value;
-      st.setup.rolloverHour = +rollSel.value;
-      st.setup.dayMap = mapper.getMap();
-    });
-    toast('Schedule updated');
+    store.update((st) => { st.setup.dayMap = mapper.getMap(); });
+    toast('Weekdays updated');
     rerender();
   };
 
@@ -243,22 +230,22 @@ export function renderSettings(rerender) {
     h('div', { class: 'h1', style: 'margin-bottom:10px' }, 'Settings'),
 
     h('div', { class: 'card' },
-      h('div', { class: 'h2', style: 'font-size:14px;margin-bottom:8px' }, '🗓 Training weekdays'),
-      h('div', { class: 'tiny faint', style: 'margin-bottom:6px' },
-        'Which workout falls on which real weekday. Each weekday used once.'),
-      mapper.el,
+      h('div', { class: 'h2', style: 'font-size:14px;margin-bottom:6px' }, '📍 Where are you now?'),
+      h('div', { class: 'tiny faint', style: 'margin-bottom:8px' },
+        'If the app shows the wrong week, fix it in two taps. The weekday is always taken from real time.'),
+      h('button', { class: 'btn primary block', onclick: () => whereAmISheet(rerender) },
+        `Today = Week ${Math.min(15, Math.floor(todayIndex() / 7) + 1)} — change`),
     ),
 
     h('div', { class: 'card' },
-      h('div', { class: 'h2', style: 'font-size:14px;margin-bottom:8px' }, '📅 Anchor'),
-      h('div', { class: 'tiny faint', style: 'margin-bottom:8px' },
-        'Which program day fell on which date — decides which week you\'re in.'),
-      h('div', { class: 'row', style: 'margin-bottom:8px' }, weekSel, daySel),
-      dateIn,
+      h('div', { class: 'h2', style: 'font-size:14px;margin-bottom:8px' }, '🗓 Training weekdays'),
+      h('div', { class: 'tiny faint', style: 'margin-bottom:6px' },
+        'Which workout falls on which real weekday. Each weekday used once. For a one-week change use "⇄ Swap days" inside that week\'s page instead.'),
+      mapper.el,
+      h('button', { class: 'btn block', style: 'margin-top:10px', onclick: saveWeekdays }, 'Save weekdays'),
       h('div', { class: 'small dim', style: 'margin:12px 0 4px;font-weight:700' }, 'Day rolls over at'),
       h('div', { class: 'tiny faint', style: 'margin-bottom:6px' }, 'Before this hour you still see yesterday\'s workout (for 1 AM sessions).'),
       rollSel,
-      h('button', { class: 'btn block', style: 'margin-top:10px', onclick: saveSchedule }, 'Save schedule'),
     ),
 
     h('div', { class: 'card' },

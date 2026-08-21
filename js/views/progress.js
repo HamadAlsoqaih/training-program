@@ -76,6 +76,9 @@ export function renderProgress(rerender) {
     h('div', { class: 'stat' }, h('div', { class: 'v' }, totalTime(statuses)), h('div', { class: 'k' }, 'gym time')),
   ));
 
+  // this week vs last week
+  container.append(weeklyCompareCard(curWeek));
+
   // phase timeline
   container.append(h('div', { class: 'card' },
     h('div', { class: 'h2', style: 'font-size:14px' }, 'Phase timeline'),
@@ -158,7 +161,60 @@ export function renderProgress(rerender) {
   return container;
 }
 
-const labelOf = (id) => { const d = getDay(id); return `W${d.week} ${weekdayName(d.d).slice(0, 3)}`; };
+const labelOf = (id) => { const d = getDay(id); return `W${d.week} ${weekdayName(d.d, d.week).slice(0, 3)}`; };
+
+// ---- weekly comparison -------------------------------------------------------
+function weekMetrics(week) {
+  let vol = 0, sets = 0, timeMs = 0, cardio = 0, any = false;
+  if (week < 1 || week > 15) return { vol, sets, timeMs, cardio, any };
+  for (let d = 1; d <= 7; d++) {
+    const id = `w${week}d${d}`;
+    const rec = store.day(id);
+    if (!rec || rec.auto) continue;
+    const day = getDay(id);
+    for (const e of dayExercises(day)) {
+      const ex = rec.ex?.[e.key];
+      if (!ex?.sets) continue;
+      for (const x of ex.sets) {
+        if (!x?.done) continue;
+        sets++; any = true;
+        if (x.weight != null) vol += +x.weight * (x.reps ?? e.item.sch.reps ?? 0);
+        if (e.item.ex === 'incline_walk') cardio++;
+      }
+    }
+    if (rec.elapsedMs) { timeMs += rec.elapsedMs; any = true; }
+  }
+  return { vol, sets, timeMs, cardio, any };
+}
+
+function weeklyCompareCard(curWeek) {
+  const now = weekMetrics(curWeek);
+  const prev = weekMetrics(curWeek - 1);
+  const fmtVol = (v) => v >= 1000 ? `${Math.round(v / 100) / 10}t` : `${Math.round(v)} kg`;
+  const fmtT = (ms) => ms ? fmtMs(ms) : '0:00';
+  const delta = (a, b, fmt = (x) => Math.round(x)) => {
+    if (!prev.any) return null;
+    const d = a - b;
+    if (d === 0) return h('span', { class: 'chip' }, '=');
+    return h('span', { class: `chip ${d > 0 ? 'good' : ''}`, style: d < 0 ? 'color:var(--warn);border-color:rgba(251,146,60,.35)' : '' },
+      `${d > 0 ? '▲' : '▼'} ${fmt(Math.abs(d))}`);
+  };
+  const row = (label, cur, last, dEl) => h('div', { class: 'row', style: 'padding:6px 0;border-bottom:1px solid var(--line)' },
+    h('div', { class: 'small grow', style: 'font-weight:700' }, label),
+    h('div', { class: 'small', style: 'font-weight:800' }, cur),
+    prev.any ? h('div', { class: 'tiny faint', style: 'width:64px;text-align:right' }, `was ${last}`) : null,
+    dEl || h('span', { style: 'width:0' }),
+  );
+  return h('div', { class: 'card' },
+    h('div', { class: 'h2', style: 'font-size:14px;margin-bottom:4px' }, `This week vs last — Week ${curWeek}`),
+    !prev.any ? h('div', { class: 'tiny faint', style: 'margin-bottom:4px' },
+      curWeek <= 1 ? 'First week — nothing to compare yet.' : 'No logged training last week to compare against.') : null,
+    row('Volume (kg×reps)', fmtVol(now.vol), fmtVol(prev.vol), delta(now.vol, prev.vol, (x) => fmtVol(x))),
+    row('Sets done', String(now.sets), String(prev.sets), delta(now.sets, prev.sets)),
+    row('Gym time', fmtT(now.timeMs), fmtT(prev.timeMs), delta(now.timeMs, prev.timeMs, (x) => fmtMs(x))),
+    row('Cardio sessions', String(now.cardio), String(prev.cardio), delta(now.cardio, prev.cardio)),
+  );
+}
 
 function cardioTicked(id, rec) {
   const day = getDay(id);

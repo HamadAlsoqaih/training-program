@@ -5,7 +5,7 @@ const KEY = 't15.state.v1';
 
 const DEFAULTS = () => ({
   version: 1,
-  setup: { done: false, anchorDate: null, anchorDay: 'w1d1', rolloverHour: 4, dayMap: null },
+  setup: { done: false, anchorDate: null, anchorDay: 'w1d1', rolloverHour: 4, dayMap: null, weekSwaps: {} },
   settings: {
     sound: true, wakeLock: true, autoRest: true,
     reminderTime: '17:00', remindersOn: false,

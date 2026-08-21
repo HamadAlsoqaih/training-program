@@ -5,8 +5,11 @@
 import { h, toast, escapeHtml } from '../util.js';
 import { EX, ytUrl, NUTRITION, PROGRAM_NOTES, getDay, fmtSecs } from '../program.js';
 import * as store from '../state.js';
-import { historyFor, bestWeight, setNote, markDay } from '../completion.js';
-import { dateForId, fmtDate, weekdayName } from '../schedule.js';
+import { historyFor, bestWeight, setNote, markDay, seedBefore } from '../completion.js';
+import {
+  dateForId, fmtDate, weekdayName, progOfWeekday, toISO, idToIndex, todayIndex,
+  WEEKDAY_NAMES, weekSwaps,
+} from '../schedule.js';
 import { fmtMs } from '../timers.js';
 import { lineChart } from '../charts.js';
 
@@ -98,6 +101,95 @@ export function durationSheet(title, currentSecs, onSave, { hint } = {}) {
     h('div', { class: 'row', style: 'margin-top:14px' },
       h('button', { class: 'btn grow', onclick: closeSheet }, 'Cancel'),
       h('button', { class: 'btn primary grow', onclick: () => { const v = read(); closeSheet(); onSave(v); } }, 'Save'),
+    ),
+  );
+}
+
+// --- "where are you now?" quick re-anchor -----------------------------------
+export function whereAmISheet(onDone) {
+  const s = store.get();
+  const roll = s.setup.rolloverHour ?? 4;
+  const eff = new Date(Date.now() - roll * 3600 * 1000);
+  const effNoon = new Date(eff.getFullYear(), eff.getMonth(), eff.getDate(), 12);
+  const progDay = progOfWeekday(effNoon.getDay());
+  const curWeek = Math.min(15, Math.max(1, Math.floor(todayIndex() / 7) + 1));
+
+  const weekSel = h('select', { class: 'sel' },
+    ...Array.from({ length: 15 }, (_, i) => h('option', { value: i + 1, selected: i + 1 === curWeek }, `Week ${i + 1}`)));
+  const seedTgl = h('input', { type: 'checkbox' });
+
+  openSheet(
+    h('div', { class: 'h2', style: 'margin-bottom:4px' }, '📍 Where are you now?'),
+    h('div', { class: 'small dim', style: 'margin-bottom:12px' },
+      `Today is ${WEEKDAY_NAMES[effNoon.getDay()]} → Day ${progDay} of whichever week you pick (from your weekday mapping). Only the week can be wrong — fix it here.`),
+    weekSel,
+    h('label', { class: 'row', style: 'margin-top:12px;gap:10px' },
+      h('span', { class: 'switch' }, seedTgl, h('span', { class: 'knob' })),
+      h('span', { class: 'small' }, 'Mark everything before today as done'),
+    ),
+    h('div', { class: 'row', style: 'margin-top:14px' },
+      h('button', { class: 'btn grow', onclick: closeSheet }, 'Cancel'),
+      h('button', {
+        class: 'btn primary grow',
+        onclick: () => {
+          const anchorDay = `w${weekSel.value}d${progDay}`;
+          store.update((st) => {
+            st.setup.anchorDate = toISO(effNoon);
+            st.setup.anchorDay = anchorDay;
+          });
+          if (seedTgl.checked) seedBefore(idToIndex(anchorDay));
+          closeSheet();
+          toast(`You're on Week ${weekSel.value} · ${WEEKDAY_NAMES[effNoon.getDay()]}`);
+          onDone?.();
+        },
+      }, 'Save'),
+    ),
+  );
+}
+
+// --- one-off day swap for a single week --------------------------------------
+export function daySwapSheet(week, onDone) {
+  const daySel = (def) => h('select', { class: 'sel' },
+    ...Array.from({ length: 7 }, (_, i) =>
+      h('option', { value: i + 1, selected: i + 1 === def }, `Day ${i + 1} — ${weekdayName(i + 1, week)}`)));
+  const aSel = daySel(3), bSel = daySel(4);
+
+  const existing = weekSwaps(week);
+  openSheet(
+    h('div', { class: 'h2', style: 'margin-bottom:4px' }, `⇄ Swap days — Week ${week} only`),
+    h('div', { class: 'small dim', style: 'margin-bottom:12px' },
+      'Trade two days for this week (e.g. Friday ↔ Saturday). Your standing weekly schedule is untouched.'),
+    existing.length ? h('div', { style: 'margin-bottom:10px' },
+      ...existing.map((pair, idx) => h('div', { class: 'row', style: 'padding:4px 0' },
+        h('div', { class: 'small grow' }, `Day ${pair[0]} ⇄ Day ${pair[1]}`),
+        h('button', {
+          class: 'btn sm danger',
+          onclick: () => {
+            store.update((st) => {
+              st.setup.weekSwaps[week] = (st.setup.weekSwaps[week] || []).filter((_, i) => i !== idx);
+              if (!st.setup.weekSwaps[week].length) delete st.setup.weekSwaps[week];
+            });
+            closeSheet(); onDone?.();
+          },
+        }, '✕ remove'),
+      ))) : null,
+    h('div', { class: 'row' }, aSel, h('div', { style: 'font-weight:800' }, '⇄'), bSel),
+    h('div', { class: 'row', style: 'margin-top:14px' },
+      h('button', { class: 'btn grow', onclick: closeSheet }, 'Cancel'),
+      h('button', {
+        class: 'btn primary grow',
+        onclick: () => {
+          const a = +aSel.value, b = +bSel.value;
+          if (a === b) { toast('Pick two different days'); return; }
+          store.update((st) => {
+            st.setup.weekSwaps = st.setup.weekSwaps || {};
+            (st.setup.weekSwaps[week] = st.setup.weekSwaps[week] || []).push([a, b]);
+          });
+          closeSheet();
+          toast(`Week ${week}: Day ${a} ⇄ Day ${b}`);
+          onDone?.();
+        },
+      }, 'Swap'),
     ),
   );
 }

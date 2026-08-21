@@ -39,18 +39,33 @@ export const WEEKDAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thurs
 
 export const dayMap = () => get().setup.dayMap || DEFAULT_DAY_MAP;
 export const weekdayOfProg = (d) => dayMap()[d];
-export const progOfWeekday = (wd) => {
-  const m = dayMap();
+export const progOfWeekday = (wd) => progOfWeekdayIn(dayMap(), wd);
+const progOfWeekdayIn = (m, wd) => {
   for (let d = 1; d <= 7; d++) if (m[d] === wd) return d;
   return 1;
 };
-export const weekdayName = (progDay) => WEEKDAY_NAMES[weekdayOfProg(progDay)];
 
-// days after this program week's Day-1 weekday
+// One-off swaps: setup.weekSwaps = { [week]: [[dayA, dayB], ...] } — that week's
+// map has the two days' weekdays exchanged; the standing schedule is untouched.
+export const weekSwaps = (week) => get().setup.weekSwaps?.[week] || [];
+export function mapForWeek(week) {
+  const swaps = weekSwaps(week);
+  if (!swaps.length) return dayMap();
+  const m = { ...dayMap() };
+  for (const [a, b] of swaps) { const t = m[a]; m[a] = m[b]; m[b] = t; }
+  return m;
+}
+export const isSwapped = (week, progDay) => mapForWeek(week)[progDay] !== dayMap()[progDay];
+export const weekdayName = (progDay, week) =>
+  WEEKDAY_NAMES[(week ? mapForWeek(week) : dayMap())[progDay]];
+
+// days after this program week's Day-1 weekday (standing map — swaps never move
+// week boundaries)
 const dowOffset = (date) => (date.getDay() - weekdayOfProg(1) + 7) % 7;
 const weekStartOf = (date) => new Date(date.getTime() - dowOffset(date) * DAY_MS);
-// offset (in real days) of a program day within its week
-const progOffset = (progDay) => (weekdayOfProg(progDay) - weekdayOfProg(1) + 7) % 7;
+// offset (in real days) of a program day within a given week
+const progOffset = (progDay, week) =>
+  ((week ? mapForWeek(week) : dayMap())[progDay] - weekdayOfProg(1) + 7) % 7;
 
 // Program-day index for "now" (may fall outside 0..104 → clamped, flagged)
 export function todayIndexRaw(now = new Date()) {
@@ -60,7 +75,8 @@ export function todayIndexRaw(now = new Date()) {
   const anchorIdx = idToIndex(anchorDay);
   const eff = effectiveDate(now);
   const weeksElapsed = Math.round((weekStartOf(eff) - weekStartOf(anchor)) / (7 * DAY_MS));
-  return (Math.floor(anchorIdx / 7) + weeksElapsed) * 7 + (progOfWeekday(eff.getDay()) - 1);
+  const week = Math.floor(anchorIdx / 7) + weeksElapsed + 1; // 1-based program week
+  return (week - 1) * 7 + (progOfWeekdayIn(mapForWeek(week), eff.getDay()) - 1);
 }
 export const todayIndex = (now) => clampIndex(todayIndexRaw(now));
 export const todayId = (now) => indexToId(todayIndex(now));
@@ -74,7 +90,8 @@ export function dateForIndex(i) {
   const anchor = parseISO(anchorDate);
   const anchorIdx = idToIndex(anchorDay);
   const weekDelta = Math.floor(i / 7) - Math.floor(anchorIdx / 7);
-  return new Date(weekStartOf(anchor).getTime() + (weekDelta * 7 + progOffset((i % 7) + 1)) * DAY_MS);
+  const week = Math.floor(i / 7) + 1;
+  return new Date(weekStartOf(anchor).getTime() + (weekDelta * 7 + progOffset((i % 7) + 1, week)) * DAY_MS);
 }
 export const dateForId = (id) => dateForIndex(idToIndex(id));
 

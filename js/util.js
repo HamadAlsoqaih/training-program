@@ -1,5 +1,10 @@
 // util.js — tiny DOM helpers
 export function h(tag, attrs = {}, ...children) {
+  // allow h('div', childEl, ...) — a Node/string/array first arg is a child
+  if (attrs && (attrs.nodeType || typeof attrs === 'string' || Array.isArray(attrs))) {
+    children.unshift(attrs);
+    attrs = {};
+  }
   const el = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs || {})) {
     if (v == null || v === false) continue;

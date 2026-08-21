@@ -4,8 +4,8 @@
 import { h, svgRing } from '../util.js';
 import { PHASES, getWeek, WEEK_BADGES } from '../program.js';
 import { weekProgress, dayProgress } from '../completion.js';
-import { todayId, dateForId, fmtDate, weekdayName } from '../schedule.js';
-import { programNotesSheet } from './sheets.js';
+import { todayId, dateForId, fmtDate, weekdayName, isSwapped } from '../schedule.js';
+import { programNotesSheet, daySwapSheet } from './sheets.js';
 
 export function renderProgram() {
   const tId = todayId();
@@ -46,7 +46,7 @@ export function renderProgram() {
   return container;
 }
 
-export function renderWeek(weekNum) {
+export function renderWeek(weekNum, rerender) {
   const week = getWeek(weekNum);
   if (!week) { location.hash = '#/program'; return h('div'); }
   const tId = todayId();
@@ -62,7 +62,10 @@ export function renderWeek(weekNum) {
           wp.complete ? h('span', { class: 'chip good' }, '✓ week done') : null,
         ),
       ),
-      h('span', { class: 'navbtn', style: 'visibility:hidden' }),
+      h('button', {
+        class: 'navbtn', 'aria-label': 'Swap days this week', style: 'font-size:15px',
+        onclick: () => daySwapSheet(weekNum, rerender),
+      }, '⇄'),
     ),
   );
   if (week.badge) container.append(h('div', { class: `banner ${weekNum === 7 || weekNum === 12 ? 'deload' : ''}` }, week.badge));
@@ -83,8 +86,9 @@ export function renderWeek(weekNum) {
       statEl,
       h('div', { class: 'grow' },
         h('div', { style: 'font-weight:700;font-size:15px' },
-          `Day ${day.d} — ${weekdayName(day.d)}`,
+          `Day ${day.d} — ${weekdayName(day.d, weekNum)}`,
           isToday ? h('span', { class: 'chip accent', style: 'margin-left:7px' }, 'today') : null,
+          isSwapped(weekNum, day.d) ? h('span', { class: 'chip info', style: 'margin-left:7px' }, '⇄') : null,
         ),
         h('div', { class: 'small dim' }, day.title),
         date ? h('div', { class: 'tiny faint' }, fmtDate(date), p.status === 'done' && dayProgressAuto(day.id) ? ' · assumed done' : '') : null,

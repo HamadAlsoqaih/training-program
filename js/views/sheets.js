@@ -37,17 +37,25 @@ export function historySheet(exId) {
     const day = getDay(entry.dayId);
     const date = dateForId(entry.dayId);
     const setsTxt = entry.sets.map((s) => {
+      const wuTag = entry.wu > 0 && s.i < entry.wu ? 'WU ' : '';
       const reps = s.reps ?? (s.done ? entry.defReps : null); // blank reps → prescribed
-      if (s.weight != null && reps != null) return `${s.weight}kg × ${reps}`;
-      if (s.weight != null) return `${s.weight}kg`;
-      if (reps != null) return `× ${reps}`;
-      return s.done ? '✓' : '·';
+      if (s.weight != null && reps != null) return `${wuTag}${s.weight}kg × ${reps}`;
+      if (s.weight != null) return `${wuTag}${s.weight}kg`;
+      if (reps != null) return `${wuTag}× ${reps}`;
+      return s.done ? `${wuTag}✓` : '·';
     }).join('  ·  ');
+    const partial = entry.doneCount < entry.total;
+    const partialChip = partial
+      ? h('span', {
+          class: 'chip', style: 'color:var(--warn);border-color:rgba(251,146,60,.35);margin-left:6px',
+        }, entry.wu > 0 ? `WS ${entry.wsDone}/${entry.wsTotal}` : `${entry.doneCount}/${entry.total} sets`)
+      : null;
     return h('div', { class: 'card', style: 'padding:10px 12px' },
       h('div', { class: 'row' },
         h('div', { class: 'grow' },
-          h('div', { class: 'small', style: 'font-weight:700' }, `Week ${day.week} · ${weekdayName(day.d)}`,
-            entry.alt ? h('span', { class: 'chip info', style: 'margin-left:6px' }, `↔ ${entry.alt}`) : null),
+          h('div', { class: 'small', style: 'font-weight:700' }, `Week ${day.week} · ${weekdayName(day.d, day.week)}`,
+            entry.alt ? h('span', { class: 'chip info', style: 'margin-left:6px' }, `↔ ${entry.alt}`) : null,
+            partialChip),
           h('div', { class: 'tiny faint' }, fmtDate(date)),
         ),
       ),

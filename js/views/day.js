@@ -351,8 +351,9 @@ function exerciseCard(dayId, entry, currentKey, rerender) {
     const ticked = !!st?.done;
     const label = sch.t === 'wuws' ? (isWU ? `WU${sch.wu > 1 ? i + 1 : ''}` : `WS${sch.ws > 1 ? i - sch.wu + 1 : ''}`) : `${i + 1}`;
 
-    // sticky prefill: this set's saved weight, else last session's for this set
-    const prevSet = last?.sets?.[i] ?? last?.sets?.[last?.sets?.length - 1];
+    // sticky prefill: this set's saved weight, else last session's for the SAME
+    // set position (history sets carry their original index), else its last set
+    const prevSet = last?.sets?.find((s2) => s2.i === i) ?? last?.sets?.[last?.sets?.length - 1];
     const prefillW = st?.weight ?? prevSet?.weight ?? '';
     let wIn = null, rIn = null;
     if (repsBased) {

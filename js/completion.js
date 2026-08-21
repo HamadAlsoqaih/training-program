@@ -143,7 +143,7 @@ export function markDay(dayId, status /* 'done' | 'skipped' | null */, extra = {
     d.status = status;
     if (status === 'done') d.finishedAt = d.finishedAt || Date.now();
     if (status === 'skipped') d.skipReason = extra.reason || '';
-    if (status === null) { delete d.finishedAt; delete d.skipReason; }
+    if (status === null) { delete d.finishedAt; delete d.skipReason; delete d.auto; }
     Object.assign(d, extra.fields || {});
   });
 }
@@ -176,21 +176,39 @@ export function seedBefore(index) {
 
 // --- exercise history ------------------------------------------------------
 // All logged sets for an exercise id across days, oldest → newest.
+// Each record is WU/WS-aware: sets keep their original index `i`, and the
+// record carries prescribed totals so partial sessions are distinguishable.
 export function historyFor(exId) {
   const out = [];
   const s = store.get();
-  for (let i = 0; i <= 104; i++) {
-    const id = indexToId(i);
+  for (let idx = 0; idx <= 104; idx++) {
+    const id = indexToId(idx);
     const rec = s.days[id];
     if (!rec || rec.auto) continue;
     const day = getDay(id);
     for (const e of dayExercises(day)) {
       if (e.item.ex !== exId) continue;
       const ex = rec.ex?.[e.key];
-      if (!ex?.sets?.length) continue;
-      const sets = ex.sets.filter((x) => x && (x.done || x.weight != null));
+      if (!ex) continue;
+      const sch = e.item.sch;
+      const wu = sch.t === 'wuws' ? sch.wu : 0;
+      const total = e.sets;
+      const raw = ex.sets || [];
+      const sets = [];
+      let doneCount = 0, wsDone = 0;
+      for (let si = 0; si < total; si++) {
+        const x = raw[si];
+        if (!x || (!x.done && x.weight == null)) continue;
+        sets.push({ ...x, i: si });
+        if (x.done) { doneCount++; if (si >= wu) wsDone++; }
+      }
+      if (!sets.length && !ex.alt) continue;
       // defReps: prescribed reps — shown when a done set has no reps typed
-      if (sets.length || ex.alt) out.push({ dayId: id, index: i, sets, note: rec.note, defReps: e.item.sch.reps ?? null, alt: ex.alt || null });
+      out.push({
+        dayId: id, index: idx, sets, note: rec.note,
+        defReps: sch.reps ?? null, alt: ex.alt || null,
+        total, doneCount, wu, wsTotal: total - wu, wsDone,
+      });
     }
   }
   return out;
@@ -211,14 +229,15 @@ export function lastSessionFor(exId, beforeIndex) {
   return hist.length ? hist[hist.length - 1] : null;
 }
 
-// Progressive-overload hint: last session had all sets done and logged weight
+// Progressive-overload hint — the program's own rule: "add weight when both
+// WORKING sets are completed cleanly". Warm-up sets are ignored entirely, and
+// a partial session (not all working sets done + weighted) never triggers it.
 export function overloadHint(exId, beforeIndex) {
   const last = lastSessionFor(exId, beforeIndex);
-  if (!last) return null;
-  const logged = last.sets.filter((s) => s.weight != null);
-  if (!logged.length) return null;
-  const allDone = last.sets.every((s) => s.done);
-  if (!allDone) return null;
-  const w = Math.max(...logged.map((s) => +s.weight));
+  if (!last || last.wsTotal <= 0) return null;
+  if (last.wsDone < last.wsTotal) return null;
+  const wsLogged = last.sets.filter((s) => s.i >= last.wu && s.done && s.weight != null);
+  if (wsLogged.length < last.wsTotal) return null;
+  const w = Math.max(...wsLogged.map((s) => +s.weight));
   return { lastWeight: w };
 }

@@ -91,7 +91,8 @@ onCountdown((cd) => {
         h('div', { class: 'rlabel' }, cd.kind === 'hold' ? '⏱ ' + cd.label : cd.label),
         rtime,
       ),
-      h('button', { class: 'btn sm', onclick: () => extendCountdown(30) }, '+30s'),
+      h('button', { class: 'btn sm', onclick: () => extendCountdown(-30) }, '−30'),
+      h('button', { class: 'btn sm', onclick: () => extendCountdown(30) }, '+30'),
       h('button', { class: 'btn sm', onclick: () => skipCountdown() }, 'Skip'),
     ));
     restUi = { id: cd.id, ringSpan, rt, rtime };

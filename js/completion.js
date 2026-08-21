@@ -121,6 +121,22 @@ function maybeCompleteDay(s, dayId) {
   return false;
 }
 
+// Tick every set of every non-optional exercise in a section at once.
+// Returns true if this completed the whole day.
+export function completeSection(dayId, entries) {
+  let just = false;
+  store.update((s) => {
+    const d = s.days[dayId] || (s.days[dayId] = { status: null, ex: {} });
+    for (const e of entries) {
+      if (e.item.opt) continue;
+      const ex = d.ex[e.key] || (d.ex[e.key] = { sets: [] });
+      for (let i = 0; i < e.sets; i++) ex.sets[i] = { ...(ex.sets[i] || {}), done: true };
+    }
+    just = maybeCompleteDay(s, dayId);
+  });
+  return just;
+}
+
 export function markDay(dayId, status /* 'done' | 'skipped' | null */, extra = {}) {
   store.update((s) => {
     const d = s.days[dayId] || (s.days[dayId] = { status: null, ex: {} });
@@ -173,7 +189,8 @@ export function historyFor(exId) {
       const ex = rec.ex?.[e.key];
       if (!ex?.sets?.length) continue;
       const sets = ex.sets.filter((x) => x && (x.done || x.weight != null));
-      if (sets.length) out.push({ dayId: id, index: i, sets, note: rec.note });
+      // defReps: prescribed reps — shown when a done set has no reps typed
+      if (sets.length || ex.alt) out.push({ dayId: id, index: i, sets, note: rec.note, defReps: e.item.sch.reps ?? null, alt: ex.alt || null });
     }
   }
   return out;

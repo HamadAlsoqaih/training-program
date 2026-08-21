@@ -6,7 +6,7 @@ import { h, toast, escapeHtml } from '../util.js';
 import { EX, ytUrl, NUTRITION, PROGRAM_NOTES, getDay, fmtSecs } from '../program.js';
 import * as store from '../state.js';
 import { historyFor, bestWeight, setNote, markDay } from '../completion.js';
-import { dateForId, fmtDate } from '../schedule.js';
+import { dateForId, fmtDate, weekdayName } from '../schedule.js';
 import { fmtMs } from '../timers.js';
 import { lineChart } from '../charts.js';
 
@@ -34,15 +34,17 @@ export function historySheet(exId) {
     const day = getDay(entry.dayId);
     const date = dateForId(entry.dayId);
     const setsTxt = entry.sets.map((s) => {
-      if (s.weight != null && s.reps != null) return `${s.weight}kg × ${s.reps}`;
+      const reps = s.reps ?? (s.done ? entry.defReps : null); // blank reps → prescribed
+      if (s.weight != null && reps != null) return `${s.weight}kg × ${reps}`;
       if (s.weight != null) return `${s.weight}kg`;
-      if (s.reps != null) return `× ${s.reps}`;
+      if (reps != null) return `× ${reps}`;
       return s.done ? '✓' : '·';
     }).join('  ·  ');
     return h('div', { class: 'card', style: 'padding:10px 12px' },
       h('div', { class: 'row' },
         h('div', { class: 'grow' },
-          h('div', { class: 'small', style: 'font-weight:700' }, `Week ${day.week} · ${day.name}`),
+          h('div', { class: 'small', style: 'font-weight:700' }, `Week ${day.week} · ${weekdayName(day.d)}`,
+            entry.alt ? h('span', { class: 'chip info', style: 'margin-left:6px' }, `↔ ${entry.alt}`) : null),
           h('div', { class: 'tiny faint' }, fmtDate(date)),
         ),
       ),
@@ -73,6 +75,47 @@ export function historySheet(exId) {
       ? h('div', {}, h('div', { class: 'section-title' }, 'Log'), ...rows)
       : h('div', { class: 'chart-empty' }, 'No logged sessions yet — tick sets and enter weights to build history.'),
   );
+}
+
+// --- duration editor --------------------------------------------------------
+export function durationSheet(title, currentSecs, onSave, { hint } = {}) {
+  const mIn = h('input', { class: 'txt', type: 'number', inputmode: 'numeric', min: 0, style: 'text-align:center' });
+  const sIn = h('input', { class: 'txt', type: 'number', inputmode: 'numeric', min: 0, max: 59, style: 'text-align:center' });
+  const setVal = (secs) => { mIn.value = Math.floor(secs / 60); sIn.value = secs % 60; };
+  setVal(Math.max(0, Math.round(currentSecs)));
+  const read = () => Math.max(0, (+mIn.value || 0) * 60 + (+sIn.value || 0));
+  const presets = [10, 20, 30, 45, 60, 90, 120, 180];
+  openSheet(
+    h('div', { class: 'h2', style: 'margin-bottom:4px' }, title),
+    hint ? h('div', { class: 'tiny faint', style: 'margin-bottom:8px' }, hint) : null,
+    h('div', { class: 'row', style: 'margin:10px 0' },
+      h('div', { class: 'grow' }, h('div', { class: 'tiny faint center' }, 'MIN'), mIn),
+      h('div', { style: 'font-weight:800' }, ':'),
+      h('div', { class: 'grow' }, h('div', { class: 'tiny faint center' }, 'SEC'), sIn),
+    ),
+    h('div', { style: 'display:flex;flex-wrap:wrap;gap:6px' },
+      ...presets.map((p) => h('button', { class: 'btn sm', onclick: () => setVal(p) }, fmtSecs(p)))),
+    h('div', { class: 'row', style: 'margin-top:14px' },
+      h('button', { class: 'btn grow', onclick: closeSheet }, 'Cancel'),
+      h('button', { class: 'btn primary grow', onclick: () => { const v = read(); closeSheet(); onSave(v); } }, 'Save'),
+    ),
+  );
+}
+
+// --- one-line text editor (substitutions, names) ----------------------------
+export function textSheet(title, current, onSave, { placeholder, hint } = {}) {
+  const input = h('input', { class: 'txt', placeholder: placeholder || '', value: current || '' });
+  openSheet(
+    h('div', { class: 'h2', style: 'margin-bottom:4px' }, title),
+    hint ? h('div', { class: 'tiny faint', style: 'margin-bottom:8px' }, hint) : null,
+    input,
+    h('div', { class: 'row', style: 'margin-top:14px' },
+      h('button', { class: 'btn grow', onclick: closeSheet }, 'Cancel'),
+      current ? h('button', { class: 'btn grow', onclick: () => { closeSheet(); onSave(''); } }, 'Clear') : null,
+      h('button', { class: 'btn primary grow', onclick: () => { const v = input.value; closeSheet(); onSave(v); } }, 'Save'),
+    ),
+  );
+  setTimeout(() => input.focus(), 250);
 }
 
 // --- day note ---------------------------------------------------------------
@@ -129,7 +172,7 @@ export function summarySheet({ dayId, elapsed, setsDone, prs }, onClose) {
     h('div', { class: 'center', style: 'padding:8px 0 4px' },
       h('div', { class: 'confetti-pop', style: 'font-size:52px' }, '🏐'),
       h('div', { class: 'h1', style: 'margin-top:6px' }, 'Session complete'),
-      h('div', { class: 'dim small' }, `Week ${day.week} · ${day.name} — ${day.title}`),
+      h('div', { class: 'dim small' }, `Week ${day.week} · ${weekdayName(day.d)} — ${day.title}`),
     ),
     h('div', { class: 'statgrid', style: 'margin-top:14px' },
       h('div', { class: 'stat' }, h('div', { class: 'v' }, fmtMs(elapsed)), h('div', { class: 'k' }, 'Duration')),

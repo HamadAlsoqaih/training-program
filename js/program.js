@@ -18,7 +18,7 @@ export const EX = {
   band_pullapart:    { name: 'Band Pull-Apart' },
   oh_pullapart:      { name: 'Overhead Band Pull-Apart' },
   spike_pull:        { name: 'Band Straight-Arm Spike Pull', note: 'High anchor', yq: 'band straight arm pulldown high anchor volleyball spike' },
-  oh_iso_hold:       { name: 'Band Overhead Iso Hold', note: 'Resist backward pull', yq: 'band overhead isometric hold shoulder' },
+  oh_iso_hold:       { name: 'Band Overhead Iso Hold', note: 'Resist backward pull — timed hold', yq: 'band overhead isometric hold shoulder' },
   // --- Rehab (6) ---
   bu_kb_press:       { name: 'Bottoms-Up KB Press', log: true, yq: 'bottoms up kettlebell press' },
   bu_kb_hold:        { name: 'Bottoms-Up KB Anti-Rotation Hold', yq: 'bottoms up kettlebell anti rotation hold' },
@@ -143,7 +143,7 @@ const SHOULDER_WARMUP = () => [
   it('sa_pulldown', sr(3, 10)), it('cb_sa_pulldown', sr(3, 10)),
   it('band_er', sr(3, 10)), it('band_ir', sr(3, 10)),
   it('band_pullapart', sr(3, 10)), it('oh_pullapart', sr(3, 10)),
-  it('spike_pull', sr(3, 10)), it('oh_iso_hold', sr(3, 10)),
+  it('spike_pull', sr(3, 10)), it('oh_iso_hold', time(3, 30)),
 ];
 const REHAB = () => [
   it('bu_kb_press', sr(3, 10)), it('bu_kb_hold', sr(3, 10)),
@@ -445,12 +445,12 @@ export function getWeek(week) {
   const days = [
     { d: 1, title: `${plyoLabel(1)} + Leg Press & Hip Thrust`, kind: 'plyo',
       sections: d([plyoFor(week, 1), day1Accessories(), cardioSection()]) },
-    { d: 2, title: 'Core & Mobility + Push Upper Body', kind: 'upper',
-      sections: d([coreFor(week), ...pushDay(), cardioSection()]) },
+    { d: 2, title: 'Push Upper Body → Core & Mobility', kind: 'upper',
+      sections: d([...pushDay(), coreFor(week), cardioSection()]) },
     { d: 3, title: `${plyoLabel(3)} + Nordics & Calf Raises`, kind: 'plyo',
       sections: d([plyoFor(week, 3), day3Accessories(), cardioSection()]) },
-    { d: 4, title: 'Core & Mobility + Pull Upper Body', kind: 'upper',
-      sections: d([coreFor(week), ...pullDay(), cardioSection()]) },
+    { d: 4, title: 'Pull Upper Body → Core & Mobility', kind: 'upper',
+      sections: d([...pullDay(), coreFor(week), cardioSection()]) },
     { d: 5, title: 'Rest + Cardio', kind: 'rest',
       sections: [cardioSection()] },
     { d: 6, title: 'Strength Day', kind: 'strength',

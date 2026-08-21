@@ -5,12 +5,14 @@ const KEY = 't15.state.v1';
 
 const DEFAULTS = () => ({
   version: 1,
-  setup: { done: false, anchorDate: null, anchorDay: 'w3d6', rolloverHour: 4 },
+  setup: { done: false, anchorDate: null, anchorDay: 'w1d1', rolloverHour: 4, dayMap: null },
   settings: {
     sound: true, wakeLock: true, autoRest: true,
     reminderTime: '17:00', remindersOn: false,
     vo2SwapAck: false, squatVariation: '',
     backupPromptWeek: 0,
+    durOv: {},   // sticky hold-timer overrides, key "exId@prescribedSecs"
+    restOv: {},  // sticky rest overrides, key "exId@prescribedRest"
   },
   days: {},        // dayId -> { status, auto, ex: {key:{sets:[{done,weight,reps}]}}, note, skipReason, cardioDone, elapsedMs, finishedAt, contacts }
   fatigue: [],     // { week, rating, note, at }

@@ -29,24 +29,52 @@ export const toISO = (date) =>
 
 const DAY_MS = 24 * 3600 * 1000;
 
+// Program day-of-week is locked to REAL weekdays via a user-configurable map
+// (program day 1..7 → JS weekday 0..6). Default = the program's original
+// schedule: D1=Wed, D2=Thu, D3=Fri, D4=Sat, D5=Sun, D6=Mon, D7=Tue.
+// A given weekday therefore always shows the same slot; the anchor only
+// decides which program WEEK a calendar week belongs to.
+export const DEFAULT_DAY_MAP = { 1: 3, 2: 4, 3: 5, 4: 6, 5: 0, 6: 1, 7: 2 };
+export const WEEKDAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+export const dayMap = () => get().setup.dayMap || DEFAULT_DAY_MAP;
+export const weekdayOfProg = (d) => dayMap()[d];
+export const progOfWeekday = (wd) => {
+  const m = dayMap();
+  for (let d = 1; d <= 7; d++) if (m[d] === wd) return d;
+  return 1;
+};
+export const weekdayName = (progDay) => WEEKDAY_NAMES[weekdayOfProg(progDay)];
+
+// days after this program week's Day-1 weekday
+const dowOffset = (date) => (date.getDay() - weekdayOfProg(1) + 7) % 7;
+const weekStartOf = (date) => new Date(date.getTime() - dowOffset(date) * DAY_MS);
+// offset (in real days) of a program day within its week
+const progOffset = (progDay) => (weekdayOfProg(progDay) - weekdayOfProg(1) + 7) % 7;
+
 // Program-day index for "now" (may fall outside 0..104 → clamped, flagged)
 export function todayIndexRaw(now = new Date()) {
   const { anchorDate, anchorDay } = get().setup;
   if (!anchorDate) return 0;
-  const diff = Math.round((effectiveDate(now) - parseISO(anchorDate)) / DAY_MS);
-  return idToIndex(anchorDay) + diff;
+  const anchor = parseISO(anchorDate);
+  const anchorIdx = idToIndex(anchorDay);
+  const eff = effectiveDate(now);
+  const weeksElapsed = Math.round((weekStartOf(eff) - weekStartOf(anchor)) / (7 * DAY_MS));
+  return (Math.floor(anchorIdx / 7) + weeksElapsed) * 7 + (progOfWeekday(eff.getDay()) - 1);
 }
 export const todayIndex = (now) => clampIndex(todayIndexRaw(now));
 export const todayId = (now) => indexToId(todayIndex(now));
 export const isProgramOver = (now) => todayIndexRaw(now) > 104;
 export const isBeforeStart = (now) => todayIndexRaw(now) < 0;
 
-// Real calendar date for a program day
+// Real calendar date for a program day (inverse of the weekday-locked mapping)
 export function dateForIndex(i) {
   const { anchorDate, anchorDay } = get().setup;
   if (!anchorDate) return null;
-  const d = parseISO(anchorDate);
-  return new Date(d.getTime() + (i - idToIndex(anchorDay)) * DAY_MS);
+  const anchor = parseISO(anchorDate);
+  const anchorIdx = idToIndex(anchorDay);
+  const weekDelta = Math.floor(i / 7) - Math.floor(anchorIdx / 7);
+  return new Date(weekStartOf(anchor).getTime() + (weekDelta * 7 + progOffset((i % 7) + 1)) * DAY_MS);
 }
 export const dateForId = (id) => dateForIndex(idToIndex(id));
 

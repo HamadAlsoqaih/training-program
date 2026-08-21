@@ -83,6 +83,16 @@ export function sessionElapsedMs(sess = store.get().session) {
   const end = sess.pausedAt || Date.now();
   return end - sess.startedAt - sess.pausedMs;
 }
+// Overwrite the running session's elapsed time (user edit)
+export function setSessionElapsed(secs) {
+  store.update((s) => {
+    if (!s.session) return;
+    const ref = s.session.pausedAt || Date.now();
+    s.session.pausedMs = 0;
+    s.session.startedAt = ref - secs * 1000;
+  });
+}
+
 export function finishSession() {
   let elapsed = 0, dayId = null;
   store.update((s) => {

@@ -6,7 +6,7 @@ import { h, svgRing } from '../util.js';
 import { PHASES, EX, getDay, dayExercises, getWeek } from '../program.js';
 import * as store from '../state.js';
 import { dayProgress, weekProgress, historyFor } from '../completion.js';
-import { todayId, todayIndex, indexToId, idToIndex, dateForId, fmtDate } from '../schedule.js';
+import { todayId, todayIndex, indexToId, idToIndex, dateForId, fmtDate, weekdayName } from '../schedule.js';
 import { fmtMs } from '../timers.js';
 import { lineChart, barChart } from '../charts.js';
 import { historySheet } from './sheets.js';
@@ -158,7 +158,7 @@ export function renderProgress(rerender) {
   return container;
 }
 
-const labelOf = (id) => { const d = getDay(id); return `W${d.week} ${d.name.slice(0, 3)}`; };
+const labelOf = (id) => { const d = getDay(id); return `W${d.week} ${weekdayName(d.d).slice(0, 3)}`; };
 
 function cardioTicked(id, rec) {
   const day = getDay(id);
@@ -180,7 +180,7 @@ function totalTime(statuses) {
 // ---- heatmap ----------------------------------------------------------------
 function heatmapCard(statuses, tIdx) {
   const cells = [h('div')]; // corner
-  for (const dn of ['W', 'T', 'F', 'S', 'S', 'M', 'T']) cells.push(h('div', { class: 'wk', style: 'justify-content:center' }, dn));
+  for (let d = 1; d <= 7; d++) cells.push(h('div', { class: 'wk', style: 'justify-content:center' }, weekdayName(d)[0]));
   for (let w = 1; w <= 15; w++) {
     cells.push(h('div', { class: 'wk' }, `${w}`));
     for (let d = 1; d <= 7; d++) {

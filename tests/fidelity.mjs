@@ -126,6 +126,20 @@ for (let w of [1, 7, 12]) {
   eq('pull day rehab all 3×10', rehab.items.every((i) => schemeLabel(i.sch) === '3×10'), true);
 }
 
+// Iso hold is a timed hold (default 0:30); KB anti-rotation hold stays reps
+eq('overhead iso hold timed 3×0:30', sch(getDay('w2d2'), 'oh_iso_hold'), '3×0:30');
+eq('KB anti-rotation hold reps 3×10', sch(getDay('w2d2'), 'bu_kb_hold'), '3×10');
+
+// Days 2/4: upper body first, core after arms, cardio last
+for (const [w, d] of [[3, 2], [3, 4], [9, 2], [14, 4]]) {
+  const titles = getDay(`w${w}d${d}`).sections.map((x) => x.title);
+  eq(`w${w}d${d} starts with shoulder warm-up`, titles[0], 'Shoulder Band Warm-Up');
+  const coreIdx = titles.findIndex((t) => t.includes('Core'));
+  const armsIdx = titles.findIndex((t) => t.includes('Arms'));
+  eq(`w${w}d${d} core after arms`, coreIdx > armsIdx && armsIdx >= 0, true);
+  eq(`w${w}d${d} cardio last`, titles[titles.length - 1], 'Cardio');
+}
+
 // Strength day contents (wk 3)
 {
   const day = getDay('w3d6');

@@ -4,7 +4,7 @@
 import { h, svgRing } from '../util.js';
 import { PHASES, getWeek, WEEK_BADGES } from '../program.js';
 import { weekProgress, dayProgress } from '../completion.js';
-import { todayId, dateForId, fmtDate } from '../schedule.js';
+import { todayId, dateForId, fmtDate, weekdayName } from '../schedule.js';
 import { programNotesSheet } from './sheets.js';
 
 export function renderProgram() {
@@ -83,7 +83,7 @@ export function renderWeek(weekNum) {
       statEl,
       h('div', { class: 'grow' },
         h('div', { style: 'font-weight:700;font-size:15px' },
-          `Day ${day.d} — ${day.name}`,
+          `Day ${day.d} — ${weekdayName(day.d)}`,
           isToday ? h('span', { class: 'chip accent', style: 'margin-left:7px' }, 'today') : null,
         ),
         h('div', { class: 'small dim' }, day.title),

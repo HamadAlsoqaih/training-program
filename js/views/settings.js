@@ -1,30 +1,31 @@
 // ============================================================================
-// settings.js — onboarding (first run) + settings screen.
+// settings.js
+//   renderStart(pid)   — the start / re-configure flow for ANY program:
+//                        weekday mapping, starting week+day, optional back-fill.
+//                        Also used as first-run onboarding.
+//   renderSettings()   — active program, appearance (accent colour), schedule,
+//                        workout behaviour, reminders, data.
 // ============================================================================
 import { h, toast } from '../util.js';
 import * as store from '../state.js';
 import { seedBefore } from '../completion.js';
+import { PROGRAM_LIST, getProgram, daySlotsFor } from '../program.js';
 import {
-  idToIndex, toISO, DEFAULT_DAY_MAP, WEEKDAY_NAMES, dayMap, todayIndex,
+  idToIndex, toISO, DEFAULT_DAY_MAP, WEEKDAY_NAMES, dayMap, todayIndex, currentWeek,
 } from '../schedule.js';
 import { whereAmISheet } from './sheets.js';
 
-const DAY_SLOTS = [
-  'Plyo + Leg Press & Hip Thrust',
-  'Push Upper Body → Core',
-  'Plyo + Nordics & Calf Raises',
-  'Pull Upper Body → Core',
-  'Rest + Cardio',
-  'Strength Day',
-  'Full Rest',
+export const ACCENTS = [
+  ['#fbbf24', 'Amber'], ['#f97316', 'Orange'], ['#ef4444', 'Red'], ['#ec4899', 'Pink'],
+  ['#a855f7', 'Purple'], ['#6366f1', 'Indigo'], ['#3b82f6', 'Blue'], ['#06b6d4', 'Cyan'],
+  ['#10b981', 'Green'], ['#84cc16', 'Lime'], ['#e5e7eb', 'White'],
 ];
 
-// ---------------------------------------------------------------------------
-// Weekday mapper — assign each program day to a real weekday (permutation)
-// ---------------------------------------------------------------------------
-function dayMapEditor(initial, onChange) {
+// --- weekday mapper (shared by start flow and settings) ---------------------
+function dayMapEditor(pid, initial, onChange) {
   const map = { ...initial };
   const selects = {};
+  const slots = daySlotsFor(pid);
   const warn = h('div', { class: 'banner behind', style: 'display:none;margin-top:8px' },
     'Each weekday can only be used once — fix the duplicates.');
 
@@ -33,8 +34,7 @@ function dayMapEditor(initial, onChange) {
     const ok = new Set(used).size === 7;
     warn.style.display = ok ? 'none' : '';
     for (let d = 1; d <= 7; d++) {
-      const dup = used.filter((w) => w === map[d]).length > 1;
-      selects[d].style.borderColor = dup ? 'var(--bad)' : '';
+      selects[d].style.borderColor = used.filter((w) => w === map[d]).length > 1 ? 'var(--bad)' : '';
     }
     onChange?.(map, ok);
     return ok;
@@ -49,9 +49,8 @@ function dayMapEditor(initial, onChange) {
     rows.push(h('div', { class: 'row', style: 'padding:5px 0' },
       h('div', { class: 'grow' },
         h('div', { class: 'small', style: 'font-weight:700' }, `Day ${d}`),
-        h('div', { class: 'tiny faint' }, DAY_SLOTS[d - 1])),
-      sel,
-    ));
+        h('div', { class: 'tiny faint' }, slots[d - 1])),
+      sel));
   }
   const el = h('div', {}, ...rows, warn);
   setTimeout(validate, 0);
@@ -64,56 +63,52 @@ const progOfWeekdayIn = (map, wd) => {
 };
 
 // ---------------------------------------------------------------------------
-// Onboarding
+// Start / re-configure a program
 // ---------------------------------------------------------------------------
-export function renderOnboarding(onDone) {
-  let week = 1, dayN = 1;
+export function renderStart(pid, onDone) {
+  const program = getProgram(pid);
+  const bucket = store.prog(pid);
+  const first = !store.get().onboarded;
   const today = new Date();
+  let week = bucket.started ? currentWeek(pid) : 1;
 
   const weekSel = h('select', { class: 'sel' },
-    ...Array.from({ length: 15 }, (_, i) => h('option', { value: i + 1, selected: i + 1 === week }, `Week ${i + 1}`)));
+    ...Array.from({ length: program.weeks }, (_, i) =>
+      h('option', { value: i + 1, selected: i + 1 === week }, `Week ${i + 1}`)));
   const daySel = h('select', { class: 'sel' });
-  const dateIn = h('input', { class: 'txt', type: 'date', value: toISO(today) });
+  const dateIn = h('input', { class: 'txt', type: 'date', value: bucket.setup.anchorDate || toISO(today) });
   const seedTgl = h('input', { type: 'checkbox' });
   const preview = h('div', { class: 'banner', style: 'margin-top:12px' });
+  let mapper;
 
-  let mapper; // set below
-
-  const rebuildDayOptions = () => {
+  const rebuildDays = () => {
     const m = mapper.getMap();
-    const cur = +daySel.value || dayN;
+    const cur = +daySel.value || 1;
     daySel.replaceChildren(...Array.from({ length: 7 }, (_, i) =>
       h('option', { value: i + 1, selected: i + 1 === cur }, `Day ${i + 1} — ${WEEKDAY_NAMES[m[i + 1]]}`)));
   };
-
-  // keep date ↔ day consistent with the map (weekday-locked schedule)
   const syncDayFromDate = () => {
     const [y, mo, d] = (dateIn.value || toISO(today)).split('-').map(Number);
-    const wd = new Date(y, mo - 1, d, 12).getDay();
-    dayN = progOfWeekdayIn(mapper.getMap(), wd);
-    daySel.value = dayN;
+    daySel.value = progOfWeekdayIn(mapper.getMap(), new Date(y, mo - 1, d, 12).getDay());
   };
   const syncDateFromDay = () => {
-    const m = mapper.getMap();
-    const target = m[+daySel.value];
+    const target = mapper.getMap()[+daySel.value];
     const [y, mo, d] = (dateIn.value || toISO(today)).split('-').map(Number);
     const cur = new Date(y, mo - 1, d, 12);
     let shift = (target - cur.getDay() + 7) % 7;
-    if (shift > 3) shift -= 7; // nearest occurrence
+    if (shift > 3) shift -= 7;
     dateIn.value = toISO(new Date(cur.getTime() + shift * 86400000));
   };
-
   const updatePreview = () => {
-    week = +weekSel.value; dayN = +daySel.value;
-    const m = mapper.getMap();
-    preview.innerHTML = `<b>${dateIn.value}</b> ↔ <b>Week ${week} · Day ${dayN} (${WEEKDAY_NAMES[m[dayN]]})</b> — ${DAY_SLOTS[dayN - 1]}.` +
-      (seedTgl.checked && (week > 1 || dayN > 1) ? `<br>Everything before it will be marked <b>done (assumed)</b>.` : '');
+    week = +weekSel.value;
+    const dayN = +daySel.value;
+    preview.innerHTML = `<b>${dateIn.value}</b> ↔ <b>Week ${week} · Day ${dayN} (${WEEKDAY_NAMES[mapper.getMap()[dayN]]})</b> — ${daySlotsFor(pid)[dayN - 1]}.`
+      + (seedTgl.checked && (week > 1 || dayN > 1) ? '<br>Everything before it will be marked <b>done (assumed)</b>.' : '');
   };
 
-  mapper = dayMapEditor(DEFAULT_DAY_MAP, () => { rebuildDayOptions(); syncDayFromDate(); updatePreview(); });
-  rebuildDayOptions();
-  syncDayFromDate();
-
+  mapper = dayMapEditor(pid, bucket.setup.dayMap || DEFAULT_DAY_MAP,
+    () => { rebuildDays(); syncDayFromDate(); updatePreview(); });
+  rebuildDays(); syncDayFromDate();
   weekSel.addEventListener('change', updatePreview);
   daySel.addEventListener('change', () => { syncDateFromDay(); updatePreview(); });
   dateIn.addEventListener('change', () => { syncDayFromDate(); updatePreview(); });
@@ -123,14 +118,14 @@ export function renderOnboarding(onDone) {
   return h('div', { class: 'onboard' }, h('div', { class: 'inner' },
     h('div', { class: 'center', style: 'margin-bottom:22px' },
       h('div', { style: 'font-size:56px' }, '🏐'),
-      h('div', { class: 'h1', style: 'margin-top:8px' }, '15-Week Program'),
+      h('div', { class: 'h1', style: 'margin-top:8px' }, first ? "Hamad's Training" : program.name),
       h('div', { class: 'dim small', style: 'margin-top:6px' },
-        'Plyo · strength · shoulder rehab · volleyball. All 105 days, tracked on your phone.'),
+        first ? 'Your training programs, tracked on your phone.' : program.subtitle),
     ),
     h('div', { class: 'card' },
       h('div', { class: 'h2', style: 'margin-bottom:6px' }, '🗓 Your training weekdays'),
       h('div', { class: 'small dim', style: 'margin-bottom:8px' },
-        '5 workout days + 2 rest days per week. Match each program day to your real weekday — the app always shows the workout that belongs to today.'),
+        'Match each program day to your real weekday — the app always shows the workout that belongs to today.'),
       mapper.el,
     ),
     h('div', { class: 'card' },
@@ -141,35 +136,32 @@ export function renderOnboarding(onDone) {
       dateIn,
       h('label', { class: 'row', style: 'margin-top:12px;gap:10px' },
         h('span', { class: 'switch' }, seedTgl, h('span', { class: 'knob' })),
-        h('span', { class: 'small' }, 'Mark all previous days as already done'),
-      ),
+        h('span', { class: 'small' }, 'Mark all previous days as already done')),
       preview,
     ),
-    h('div', { class: 'card' },
+    first ? h('div', { class: 'card' },
       h('div', { class: 'h2', style: 'font-size:14px' }, '📲 Use it like an app'),
       h('div', { class: 'small dim', style: 'margin-top:4px' },
-        'In Safari: tap Share → “Add to Home Screen”. Full-screen app, works offline, timers and sounds behave better.'),
-    ),
-    h('div', { class: 'card' },
-      h('div', { class: 'h2', style: 'font-size:14px' }, '🌙 Late-night grace'),
-      h('div', { class: 'small dim', style: 'margin-top:4px' },
-        'The day doesn\'t flip at midnight — before 4 AM you still see the previous day\'s workout. Change the hour in Settings.'),
-    ),
+        'In Safari: tap Share → “Add to Home Screen”. Full-screen, works offline, timers and sounds behave better.')) : null,
     h('button', {
       class: 'btn primary block', style: 'margin-top:8px;min-height:54px',
       onclick: () => {
         if (!mapper.isValid()) { toast('Fix the duplicate weekdays first'); return; }
+        const anchorDay = `w${weekSel.value}d${daySel.value}`;
         store.update((s) => {
-          s.setup = {
-            done: true, anchorDate: dateIn.value || toISO(today),
-            anchorDay: `w${weekSel.value}d${daySel.value}`, rolloverHour: 4,
-            dayMap: mapper.getMap(),
-          };
+          const b = s.programs[pid];
+          b.started = true;
+          b.startedAt = b.startedAt || Date.now();
+          b.setup = { ...b.setup, anchorDate: dateIn.value || toISO(today), anchorDay, dayMap: mapper.getMap() };
+          s.activeProgram = pid;
+          s.onboarded = true;
+          if (s.session && s.session.pid !== pid) s.session = null;
         });
-        if (seedTgl.checked) seedBefore(idToIndex(`w${weekSel.value}d${daySel.value}`));
+        if (seedTgl.checked) seedBefore(pid, idToIndex(anchorDay));
         onDone();
       },
-    }, 'Start training →'),
+    }, bucket.started ? 'Save schedule →' : 'Start training →'),
+    !first && bucket.started ? h('a', { class: 'btn block', style: 'margin-top:8px', href: `#/program/${pid}` }, 'Cancel') : null,
   ));
 }
 
@@ -178,6 +170,8 @@ export function renderOnboarding(onDone) {
 // ---------------------------------------------------------------------------
 export function renderSettings(rerender) {
   const s = store.get();
+  const pid = store.activePid();
+  const program = getProgram(pid);
 
   const toggleRow = (label, sub, key) => {
     const input = h('input', {
@@ -188,24 +182,16 @@ export function renderSettings(rerender) {
       h('div', { class: 'grow' },
         h('div', { class: 'small', style: 'font-weight:700' }, label),
         sub ? h('div', { class: 'tiny faint' }, sub) : null),
-      h('label', { class: 'switch' }, input, h('span', { class: 'knob' })),
-    );
+      h('label', { class: 'switch' }, input, h('span', { class: 'knob' })));
   };
 
-  // schedule editing
-  const mapper = dayMapEditor(dayMap(), () => {});
+  const mapper = dayMapEditor(pid, dayMap(pid), () => {});
   const rollSel = h('select', {
     class: 'sel',
-    onchange: () => { store.update((st) => { st.setup.rolloverHour = +rollSel.value; }); toast('Rollover updated'); },
-  },
-    ...[0, 1, 2, 3, 4, 5, 6].map((hh) => h('option', { value: hh, selected: hh === s.setup.rolloverHour },
-      hh === 0 ? 'Midnight (no grace)' : `${hh} AM`)));
-  const saveWeekdays = () => {
-    if (!mapper.isValid()) { toast('Fix the duplicate weekdays first'); return; }
-    store.update((st) => { st.setup.dayMap = mapper.getMap(); });
-    toast('Weekdays updated');
-    rerender();
-  };
+    onchange: () => { store.update((st) => { st.programs[pid].setup.rolloverHour = +rollSel.value; }); toast('Rollover updated'); },
+  }, ...[0, 1, 2, 3, 4, 5, 6].map((hh) => h('option', {
+    value: hh, selected: hh === store.setupOf(pid).rolloverHour,
+  }, hh === 0 ? 'Midnight (no grace)' : `${hh} AM`)));
 
   const squatIn = h('input', {
     class: 'txt', placeholder: 'e.g. belt squat (PT-cleared)', value: s.settings.squatVariation || '',
@@ -218,33 +204,79 @@ export function renderSettings(rerender) {
       const f = fileIn.files[0];
       if (!f) return;
       try {
-        const text = await f.text();
         const replace = confirm('OK = REPLACE everything with the backup.\nCancel = merge (keep local days, fill gaps from backup).');
-        store.importJson(text, replace ? 'replace' : 'merge');
+        store.importJson(await f.text(), replace ? 'replace' : 'merge');
         toast('Backup imported'); rerender();
       } catch (e) { alert(`Import failed: ${e.message}`); }
     },
+  });
+
+  // --- appearance ---
+  const setAccent = (hex) => { store.update((st) => { st.settings.accent = hex; }); rerender({ keepScroll: true }); };
+  const swatches = h('div', { class: 'swatches' },
+    ...ACCENTS.map(([hex, name]) => h('button', {
+      class: `swatch${s.settings.accent?.toLowerCase() === hex.toLowerCase() ? ' on' : ''}`,
+      style: `background:${hex}`, 'aria-label': name, title: name,
+      onclick: () => setAccent(hex),
+    })));
+  const colorIn = h('input', {
+    type: 'color', class: 'colorin', value: s.settings.accent || '#fbbf24',
+    oninput: () => setAccent(colorIn.value),
   });
 
   return h('div',
     h('div', { class: 'h1', style: 'margin-bottom:10px' }, 'Settings'),
 
     h('div', { class: 'card' },
+      h('div', { class: 'h2', style: 'font-size:14px;margin-bottom:6px' }, '🏋️ Active program'),
+      h('div', { class: 'tiny faint', style: 'margin-bottom:8px' },
+        'The Today tab follows this program. Switching keeps every program’s progress.'),
+      ...PROGRAM_LIST.map((p) => h('button', {
+        class: `btn block${p.id === pid ? ' primary' : ''}`, style: 'margin-bottom:8px;justify-content:space-between',
+        onclick: () => {
+          if (p.id === pid) { location.hash = `#/program/${p.id}`; return; }
+          if (!store.prog(p.id).started) { location.hash = `#/start/${p.id}`; return; }
+          store.setActiveProgram(p.id); toast(`${p.name} is now active`); rerender();
+        },
+      }, p.name, h('span', { class: 'tiny' }, p.id === pid ? 'active' : store.prog(p.id).started ? 'switch' : 'start'))),
+      h('a', { class: 'btn sm block', href: '#/programs' }, 'Browse all programs'),
+    ),
+
+    h('div', { class: 'card' },
+      h('div', { class: 'h2', style: 'font-size:14px;margin-bottom:6px' }, '🎨 Appearance'),
+      h('div', { class: 'tiny faint', style: 'margin-bottom:10px' },
+        'Accent colour for buttons, the tab bar, toggles and highlights.'),
+      swatches,
+      h('div', { class: 'row', style: 'margin-top:12px;gap:10px' },
+        h('div', { class: 'grow small', style: 'font-weight:700' }, 'Custom colour'),
+        colorIn,
+        h('button', { class: 'btn sm', onclick: () => setAccent('#fbbf24') }, 'Reset')),
+    ),
+
+    h('div', { class: 'card' },
       h('div', { class: 'h2', style: 'font-size:14px;margin-bottom:6px' }, '📍 Where are you now?'),
       h('div', { class: 'tiny faint', style: 'margin-bottom:8px' },
-        'If the app shows the wrong week, fix it in two taps. The weekday is always taken from real time.'),
-      h('button', { class: 'btn primary block', onclick: () => whereAmISheet(rerender) },
-        `Today = Week ${Math.min(15, Math.floor(todayIndex() / 7) + 1)} — change`),
+        `${program.name} — if the app shows the wrong week, fix it in two taps. The weekday always comes from real time.`),
+      h('button', { class: 'btn primary block', onclick: () => whereAmISheet(pid, rerender) },
+        `Today = Week ${currentWeek(pid)} — change`),
     ),
 
     h('div', { class: 'card' },
       h('div', { class: 'h2', style: 'font-size:14px;margin-bottom:8px' }, '🗓 Training weekdays'),
       h('div', { class: 'tiny faint', style: 'margin-bottom:6px' },
-        'Which workout falls on which real weekday. Each weekday used once. For a one-week change use "⇄ Swap days" inside that week\'s page instead.'),
+        `Which ${program.name} day falls on which real weekday. For a one-week change use “⇄” inside that week instead.`),
       mapper.el,
-      h('button', { class: 'btn block', style: 'margin-top:10px', onclick: saveWeekdays }, 'Save weekdays'),
+      h('button', {
+        class: 'btn block', style: 'margin-top:10px',
+        onclick: () => {
+          if (!mapper.isValid()) { toast('Fix the duplicate weekdays first'); return; }
+          store.update((st) => { st.programs[pid].setup.dayMap = mapper.getMap(); });
+          toast('Weekdays updated'); rerender();
+        },
+      }, 'Save weekdays'),
       h('div', { class: 'small dim', style: 'margin:12px 0 4px;font-weight:700' }, 'Day rolls over at'),
-      h('div', { class: 'tiny faint', style: 'margin-bottom:6px' }, 'Before this hour you still see yesterday\'s workout (for 1 AM sessions).'),
+      h('div', { class: 'tiny faint', style: 'margin-bottom:6px' },
+        'Before this hour you still see yesterday’s workout (for 1 AM sessions).'),
       rollSel,
     ),
 
@@ -277,7 +309,7 @@ export function renderSettings(rerender) {
     h('div', { class: 'card' },
       h('div', { class: 'h2', style: 'font-size:14px;margin-bottom:6px' }, '🦵 Squat variation (PT clearance)'),
       h('div', { class: 'tiny faint', style: 'margin-bottom:8px' },
-        'Program note: confirm with your PT which squat variation is cleared for your shoulder. Front Raise stays dropped pending PT confirmation.'),
+        'Confirm with your PT which squat variation is cleared for your shoulder.'),
       squatIn,
     ),
 
@@ -288,7 +320,7 @@ export function renderSettings(rerender) {
       h('button', {
         class: 'btn sm block',
         onclick: () => {
-          if (!confirm('Clear all saved timer/rest overrides and go back to the program\'s values?')) return;
+          if (!confirm('Clear all saved timer/rest overrides and go back to the program’s values?')) return;
           store.update((st) => { st.settings.durOv = {}; st.settings.restOv = {}; });
           toast('Overrides cleared'); rerender();
         },
@@ -298,35 +330,30 @@ export function renderSettings(rerender) {
     h('div', { class: 'card' },
       h('div', { class: 'h2', style: 'font-size:14px;margin-bottom:8px' }, '💾 Data'),
       h('div', { class: 'tiny faint', style: 'margin-bottom:10px' },
-        'Everything lives on this device. Export a backup regularly — clearing Safari data wipes it.'),
+        'Everything lives on this device, for every program. Export a backup regularly — clearing Safari data wipes it.'),
       h('div', { class: 'row' },
         h('button', {
           class: 'btn grow', onclick: () => {
             const blob = new Blob([store.exportJson()], { type: 'application/json' });
             const a = document.createElement('a');
             a.href = URL.createObjectURL(blob);
-            a.download = `15week-backup-${toISO(new Date())}.json`;
+            a.download = `training-backup-${toISO(new Date())}.json`;
             a.click();
             setTimeout(() => URL.revokeObjectURL(a.href), 5000);
           },
         }, '⬇ Export'),
         h('button', { class: 'btn grow', onclick: () => fileIn.click() }, '⬆ Import'),
-        fileIn,
-      ),
+        fileIn),
       h('button', {
         class: 'btn danger block', style: 'margin-top:10px',
         onclick: () => {
-          if (!confirm('Delete ALL progress, logs and settings on this device?')) return;
+          if (!confirm('Delete ALL progress, logs and settings for every program on this device?')) return;
           if (!confirm('Really sure? This cannot be undone (unless you exported a backup).')) return;
-          store.resetAll();
-          location.hash = '#/today';
-          location.reload();
+          store.resetAll(); location.hash = '#/today'; location.reload();
         },
       }, 'Reset everything'),
     ),
 
-    h('div', { class: 'card tiny faint' },
-      'Built for the 15-week volleyball strength & plyo program · works offline · v2',
-    ),
+    h('div', { class: 'card tiny faint' }, "Hamad's Training · works offline · v5"),
   );
 }

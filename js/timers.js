@@ -58,10 +58,11 @@ document.addEventListener('visibilitychange', () => {
 });
 
 // --- session stopwatch -----------------------------------------------------
-export function startSession(dayId) {
+export function startSession(pid, dayId) {
   store.update((s) => {
-    s.session = { dayId, startedAt: Date.now(), pausedAt: null, pausedMs: 0 };
-    const d = s.days[dayId] || (s.days[dayId] = { status: null, ex: {} });
+    s.session = { pid, dayId, startedAt: Date.now(), pausedAt: null, pausedMs: 0 };
+    const p = s.programs[pid];
+    const d = p.days[dayId] || (p.days[dayId] = { status: null, ex: {} });
     d.startedAt = d.startedAt || Date.now();
   });
   acquireWakeLock();
@@ -94,17 +95,19 @@ export function setSessionElapsed(secs) {
 }
 
 export function finishSession() {
-  let elapsed = 0, dayId = null;
+  let elapsed = 0, dayId = null, pid = null;
   store.update((s) => {
     if (!s.session) return;
     elapsed = sessionElapsedMs(s.session);
     dayId = s.session.dayId;
-    const d = s.days[dayId] || (s.days[dayId] = { status: null, ex: {} });
+    pid = s.session.pid;
+    const p = s.programs[pid];
+    const d = p.days[dayId] || (p.days[dayId] = { status: null, ex: {} });
     d.elapsedMs = (d.elapsedMs || 0) + elapsed;
     s.session = null;
   });
   releaseWakeLock();
-  return { elapsed, dayId };
+  return { elapsed, dayId, pid };
 }
 export function discardSession() {
   store.update((s) => { s.session = null; });

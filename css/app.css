@@ -1,5 +1,5 @@
 /* ==========================================================================
-   15-Week Program — design system. Dark, phone-first, thumb-reachable.
+   Hamad's Training — design system. Dark, phone-first, thumb-reachable.
    ========================================================================== */
 :root {
   --bg: #0b0f16;
@@ -10,8 +10,10 @@
   --text: #edf1f7;
   --dim: #93a0b4;
   --faint: #5b6a80;
-  --accent: #fbbf24;        /* amber — action / current */
-  --accent-ink: #201503;
+  --accent: #fbbf24;        /* theme colour — overridden from Settings */
+  --accent-ink: #15130a;    /* text on top of the accent */
+  --accent-soft: rgba(251,191,36,.14);
+  --accent-line: rgba(251,191,36,.42);
   --good: #34d399;          /* done */
   --good-dim: rgba(52, 211, 153, .14);
   --warn: #fb923c;
@@ -98,7 +100,7 @@ svg { display: block; }
   border: 1px solid var(--line);
   white-space: nowrap;
 }
-.chip.accent { background: rgba(251,191,36,.14); color: var(--accent); border-color: rgba(251,191,36,.3); }
+.chip.accent { background: var(--accent-soft); color: var(--accent); border-color: var(--accent-line); }
 .chip.good { background: var(--good-dim); color: var(--good); border-color: rgba(52,211,153,.3); }
 .chip.bad  { background: var(--bad-dim); color: var(--bad); border-color: rgba(248,113,113,.3); }
 .chip.info { background: rgba(96,165,250,.13); color: var(--info); border-color: rgba(96,165,250,.3); }
@@ -123,7 +125,7 @@ svg { display: block; }
   font-size: 13.5px; font-weight: 600;
   background: rgba(96,165,250,.1); color: #a8c9f5; border: 1px solid rgba(96,165,250,.25);
 }
-.banner.deload { background: rgba(251,191,36,.1); color: #f2d38b; border-color: rgba(251,191,36,.3); }
+.banner.deload { background: var(--accent-soft); color: var(--accent); border-color: var(--accent-line); }
 .banner.behind { background: var(--bad-dim); color: #f5b1b1; border-color: rgba(248,113,113,.3); }
 
 /* --- day header ----------------------------------------------------------- */
@@ -148,7 +150,7 @@ svg { display: block; }
   display: flex; align-items: center; gap: 10px;
 }
 .sessionbar .time { font-size: 24px; font-weight: 800; font-variant-numeric: tabular-nums; }
-.sessionbar.running { border-color: rgba(251,191,36,.45); }
+.sessionbar.running { border-color: var(--accent-line); }
 
 /* --- exercise cards -------------------------------------------------------- */
 .section-title {
@@ -170,7 +172,11 @@ svg { display: block; }
   background: var(--card); border: 1px solid var(--line);
   border-radius: var(--r); padding: 12px 13px; margin-bottom: 8px;
   transition: border-color .15s, background .15s;
+  content-visibility: auto;          /* skip painting off-screen cards */
+  contain-intrinsic-size: auto 190px;
 }
+.ex.skipped { opacity: .5; border-style: dashed; }
+.ex.skipped .sets, .ex.skipped .ex-actions { display: none; }
 .ex.done { background: #131b22; border-color: rgba(52,211,153,.35); }
 .ex.current { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), var(--shadow); }
 .ex.optional { border-style: dashed; }
@@ -225,8 +231,8 @@ svg { display: block; }
 
 .hint {
   margin-top: 8px; font-size: 12.5px; font-weight: 600;
-  color: var(--accent); background: rgba(251,191,36,.09);
-  border: 1px dashed rgba(251,191,36,.35); border-radius: 9px; padding: 6px 10px;
+  color: var(--accent); background: var(--accent-soft);
+  border: 1px dashed var(--accent-line); border-radius: 9px; padding: 6px 10px;
 }
 
 /* superset link */
@@ -289,7 +295,7 @@ svg { display: block; }
   padding: 10px 14px; display: flex; align-items: center; gap: 12px;
   box-shadow: var(--shadow);
 }
-.restcard.hold { border-color: rgba(251,191,36,.45); }
+.restcard.hold { border-color: var(--accent-line); }
 .restcard .ring { flex-shrink: 0; position: relative; width: 52px; height: 52px; }
 .restcard .ring svg { width: 52px; height: 52px; transform: rotate(-90deg); }
 .restcard .ring .rt {
@@ -407,7 +413,7 @@ select.sel:focus, input.txt:focus { outline: none; border-color: var(--accent); 
   flex: 1; height: 48px; border-radius: 11px; font-size: 19px;
   background: var(--card2); border: 1.5px solid var(--line);
 }
-.fatiguebtns button.on { border-color: var(--accent); background: rgba(251,191,36,.14); }
+.fatiguebtns button.on { border-color: var(--accent); background: var(--accent-soft); }
 
 /* --- settings --------------------------------------------------------------- */
 .setrow2 {
@@ -462,3 +468,90 @@ select.sel:focus, input.txt:focus { outline: none; border-color: var(--accent); 
 @media (min-width: 640px) {
   :root { --r: 18px; }
 }
+
+
+/* ==========================================================================
+   Round 5 additions — icons row, band/cable toggle, organize mode,
+   last-session line, colour swatches, in-app video player.
+   ========================================================================== */
+.ex-icons { display: flex; gap: 6px; flex-shrink: 0; }
+.ytlink.vid-open { color: var(--accent); border-color: var(--accent-line); background: var(--accent-soft); font-size: 13px; }
+
+/* band ↔ cable */
+.seg { display: flex; gap: 6px; margin-top: 10px; }
+.seg-btn {
+  flex: 1; min-height: 38px; border-radius: 10px; font-size: 12.5px; font-weight: 700;
+  background: var(--card2); border: 1.5px solid var(--line); color: var(--dim);
+}
+.seg-btn.on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+
+/* organize mode */
+.iconbtn {
+  width: 40px; height: 40px; border-radius: 10px; flex-shrink: 0;
+  background: var(--card2); border: 1.5px solid var(--line); color: var(--dim);
+  font-size: 15px; font-weight: 800;
+  display: flex; align-items: center; justify-content: center;
+}
+.iconbtn:disabled { opacity: .3; }
+.iconbtn.danger { color: var(--bad); border-color: rgba(248,113,113,.3); }
+.orgbar {
+  display: flex; gap: 6px; flex-wrap: wrap; align-items: center;
+  margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--line);
+}
+
+/* last-session line under a set row */
+.setwrap { width: 100%; }
+.lastline {
+  font-size: 11px; color: var(--faint); font-weight: 600;
+  margin: 2px 0 6px 54px; font-variant-numeric: tabular-nums;
+}
+
+/* accent swatches */
+.swatches { display: flex; flex-wrap: wrap; gap: 10px; }
+.swatch {
+  width: 40px; height: 40px; border-radius: 50%;
+  border: 2px solid transparent; box-shadow: 0 0 0 1px var(--line) inset;
+}
+.swatch.on { border-color: var(--text); transform: scale(1.06); }
+.colorin {
+  width: 54px; height: 40px; padding: 2px; border-radius: 10px;
+  background: var(--card2); border: 1.5px solid var(--line);
+}
+
+/* ---- in-app video player ---- */
+.vid-root {
+  position: fixed; inset: 0; z-index: 120;
+  background: rgba(4,6,10,.72);
+  -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px);
+  display: flex; align-items: flex-end; justify-content: center;
+  animation: fadeIn .16s ease;
+}
+.vid-sheet {
+  width: 100%; max-width: 760px;
+  background: #05070c; border: 1px solid var(--line); border-bottom: 0;
+  border-radius: 20px 20px 0 0; overflow: hidden;
+  display: flex; flex-direction: column;
+  padding-bottom: env(safe-area-inset-bottom);
+  animation: slideUp .22s cubic-bezier(.2,.9,.3,1);
+}
+.vid-sheet.full {
+  position: fixed; inset: 0; max-width: none; border-radius: 0;
+  border: 0; padding-top: env(safe-area-inset-top);
+}
+.vid-bar { display: flex; align-items: center; gap: 8px; padding: 10px 12px; }
+.vid-title { font-size: 14.5px; font-weight: 800; }
+.vid-btn {
+  width: 38px; height: 38px; border-radius: 10px; flex-shrink: 0;
+  background: var(--card2); border: 1px solid var(--line); color: var(--text);
+  font-size: 15px; display: flex; align-items: center; justify-content: center;
+}
+.vid-stage { position: relative; background: #000; flex: 1; display: flex; }
+.vid { width: 100%; height: 50vh; max-height: 50vh; object-fit: contain; background: #000; display: block; }
+.vid-sheet.full .vid { height: 100%; max-height: none; flex: 1; }
+.vid-status {
+  position: absolute; inset: 0; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; text-align: center;
+  padding: 20px; color: var(--dim); font-size: 13.5px;
+  background: rgba(5,7,12,.9);
+}
+body.video-open { overflow: hidden; }

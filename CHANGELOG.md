@@ -1,0 +1,139 @@
+# Changelog
+
+Every version of this app, from the first build to today. Newest first.
+
+---
+
+## v5 — Multi-program, in-app video, editable days, theme colour
+
+Renamed **15-Week Training Program → Hamad's Training**: the app is no longer one
+program. (Home-screen label "Training"; the lightning-bolt icon is unchanged. The
+repo name and site URL are deliberately left alone so installed apps and saved
+progress keep working.)
+
+**Second program**
+- Added the **12-Week Vert Code** (PJF Vert Code — bodyweight, adapted to the same
+  weekly template): 84 days, 4 phases, encoded exactly from the source tables —
+  per-week rep/duration progressions, Type A (Freestyle) vs Type B (Max Approach)
+  day assignment, the week-5 deload (Day 1 no plyo, Day 2 no core), Drach Jumps
+  dropping out of Type A from week 7, its own lower-volume warm-up/rehab blocks,
+  Chest Press and KB Bottoms-Up Walk, accessory placement before the cooldown, and
+  no Seven Eleven Breathing in phase 4.
+- **Programs browser**: Programs → Program (Start / Continue / Make active +
+  phases) → Phase → Week → Day.
+- Each program keeps its **own schedule anchor, weekday map, day records and
+  fatigue log**. Switching programs never deletes anything. **Logged weights are
+  shared across programs**, so leg-press numbers carry over.
+
+**In-app video**
+- Exercise videos (Mux HLS) now play **inside the app**: a ▶ button opens a
+  half-screen player that expands to full screen, with native controls
+  (play/seek/volume/speed/AirPlay/PiP). iOS plays HLS natively; other browsers
+  lazily load hls.js. `preload="none"`, so nothing downloads until you tap.
+  A blocked or missing video shows a clear message plus an external link.
+
+**Editing a day**
+- **Organize day** mode: reorder exercises and whole sections, add or delete
+  individual sets, skip a single exercise (instead of only the whole day), and
+  edit sets / reps / duration / rest per exercise.
+- **Scope rule**: edits made in **Today (or any day with a running session) apply
+  silently to that day only** — never interrupting a workout. Edits made while
+  **browsing** a day ask: **just this day** or **the whole phase** (same day-slot
+  across that phase's weeks, skipping days already completed).
+- Per-day **Band ↔ Cable toggle** on band exercises: renames the exercise and
+  keeps cable weight history separate from band history. Applies to that day only.
+- "✎ edited" badge on customised days plus a one-tap **Reset** back to the
+  program's original layout.
+
+**Logging**
+- Every set row now shows **what you actually lifted last time — weight AND reps**
+  (`↺ last: 60 kg × 8`), not just a prefilled weight.
+
+**Appearance**
+- **Accent colour** is now a setting: 11 swatches plus a custom colour picker.
+  It drives the tab bar, primary buttons, toggles, highlights and timers.
+  Text on the accent flips between dark and light automatically by luminance.
+
+**Performance** (explicit goal this round)
+- **Memoised history index**: every logged day of every program is indexed by
+  exercise once per state change. Previously each exercise card re-scanned all
+  105 days for prefill/hints — the main lag risk, which would have doubled with a
+  second program.
+- **Targeted DOM updates**: ticking a set, typing a weight, using a stepper or the
+  contact counter now updates only that card (or a single text node) instead of
+  re-rendering the whole day.
+- Week building, planned days and per-day exercise lists are cached;
+  `content-visibility` keeps long days from painting off-screen cards.
+- Measured in CI at iPhone viewport: **~16 ms** to render a 28-exercise day,
+  **~11 ms** to tick a set. The E2E suite fails the build if these regress.
+
+**Fixes**
+- Organize mode no longer leaks from one day to another.
+- `h()` no longer drops a child passed as the first argument.
+
+---
+
+## v4 — Partial sessions count as partial
+
+- Volume, sets and completion already counted only ticked sets; this is now
+  locked down by a test (one set at 2 kg × prescribed 10 reps = exactly 20 kg).
+- History records became warm-up/working-set aware: each set keeps its original
+  index, and records carry prescribed totals and done counts.
+- The **"add weight" hint** now follows the program rule exactly — it fires only
+  when **all working sets** were completed and weight-logged. Warm-up ticks are
+  ignored, so they can neither fake nor block it.
+- History flags partial sessions (`WS 1/2`, `n/total sets`) and labels warm-ups.
+- Reopening an "assumed done" back-filled day clears the assumed flag so
+  retro-logged work counts in stats.
+
+## v3 — Quick re-anchor, weekly comparison, kg steppers, day swaps
+
+- **"Where are you now?"**: pick the week you're actually in (the day comes from
+  the real weekday), with optional back-fill — reachable from Settings and a
+  "wrong week? fix it" link on today. Replaced the confusing anchor editor.
+- **This week vs last** card: volume (kg × reps), sets, gym time and cardio
+  sessions with deltas.
+- **−/+ 2.5 kg steppers** beside every weight input.
+- **One-off day swaps** per week (e.g. Friday ↔ Saturday) that leave the standing
+  schedule untouched; swapped days are badged and dates follow the swap.
+- Fixed `h()` dropping first-argument children, which had silently removed the
+  Program/Progress/Week headings.
+
+## v2 — Weekday bug, flexible schedule, logging everywhere
+
+- **Fixed the wrong-day bug**: the displayed day is now locked to the real
+  weekday; the anchor only decides which week it is.
+- **Configurable training weekdays**: assign the 5 workout days + 2 rest days to
+  any weekdays (default Wed–Tue).
+- Weight/reps inputs on **every** rep-based exercise including warm-up sets;
+  blank weight logs nothing, blank reps count as the prescribed number.
+- **Sticky values**: weights pre-fill from your last session; edited hold and rest
+  timers are remembered per exercise, keyed by the prescribed value so program
+  progressions automatically take over.
+- Editable workout stopwatch, hold timers and rest times; −30s on the rest bar.
+- Band Overhead Iso Hold became a timed hold (3×0:30); KB Anti-Rotation Hold
+  stayed reps.
+- Core moved after the upper-body work on Days 2 and 4.
+- Arm "exercise of choice" naming, substitution notes, per-section "✓ all" bulk
+  tick, header link to the week view.
+
+## v1 — Initial build
+
+The 15-week volleyball strength & plyometrics program as a phone-first,
+offline-capable PWA:
+
+- All 105 days encoded from the source tables — 4 phases, volume ramps, the week 7
+  and week 12 deloads, Type A/B plyo days, warm-up/rehab/strength blocks,
+  supersets, rest times and technique notes.
+- Calendar-anchored Today view with a 4 AM late-night rollover, plus onboarding
+  that can back-fill earlier days as done.
+- Cascading completion: set → exercise → day → week.
+- Session stopwatch, auto rest countdowns, hold timers, and a Freestyle Jumping
+  ground-contact counter with the 40–50 cap warning.
+- Weight/reps logging with PR detection, per-exercise history and trend charts.
+- Progress dashboard: streak, adherence, cardio %, 105-day heatmap, phase
+  timeline, duration/lift/volume charts, weekly fatigue check-in, VO2 reminder.
+- Offline PWA (service worker, manifest, generated icons), wake lock, JSON
+  export/import backups.
+- Fidelity tests validating the encoded program against the source tables, and a
+  GitHub Actions workflow deploying to GitHub Pages.

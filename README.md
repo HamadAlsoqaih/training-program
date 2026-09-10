@@ -1,85 +1,90 @@
-# 15-Week Training Program — Phone App
+# Hamad's Training
 
-A phone-first, offline-capable web app for the 15-week volleyball strength & plyometric
-program. All 105 days encoded exactly (phases, volume ramps, deloads, per-week tables),
-with progress tracking, timers, weight logging and a progress dashboard.
+A phone-first, offline-capable training app. Two full programs encoded exactly
+from their source tables, with progress tracking, timers, weight logging,
+in-app exercise videos and a progress dashboard.
 No backend, no login — everything lives on your phone.
 
-## Get it on your iPhone
+**Open it:** https://hamadalsoqaih.github.io/personal-15week-program/
+In Safari: **Share → Add to Home Screen** for a full-screen app that works
+offline at the gym.
 
-1. Open the site on your iPhone:
-   **https://hamadalsoqaih.github.io/personal-15week-program/**
-2. In Safari: **Share → Add to Home Screen**. You now have a full-screen app that works
-   offline at the gym.
+## Programs
 
-Deployment: every push to the main development branch runs the fidelity tests and
-publishes the site to the `gh-pages` branch (`.github/workflows/pages.yml`), which
-GitHub Pages serves. No manual steps.
+| Program | Length | What it is |
+|---|---|---|
+| **15-Week Program** | 15 weeks · 4 phases | Volleyball strength, plyometrics & shoulder rehab |
+| **12-Week Vert Code** | 12 weeks · 4 phases | PJF Vert Code (bodyweight) on the same weekly template |
+
+Each program keeps its own schedule and progress; the Today tab follows whichever
+one is active. Logged weights are shared, so your numbers carry across.
 
 ## Features
 
-- **Today view** — opens on today's workout (calendar-mapped, with a 4 AM "late-night
-  grace": at 1 AM Tuesday you still see Monday's session). Free navigation to any day.
-- **Every exercise, all info** — sets/reps/durations/rest per week, warm-up vs working
-  sets, technique notes, superset grouping, how-to video links (YouTube search).
-- **Cascading completion** — tick sets → exercise done → all exercises → day done
-  automatically → all days → week done. Optional items (volleyball, static stretch)
-  never block completion.
-- **Timers** — session stopwatch (survives phone lock/reload), auto-starting rest
-  countdowns with chime + screen flash, hold/breathing timers, a ground-contact tap
-  counter for Freestyle Jumping with the 40–50 cap warning.
-- **Logging** — weight/reps per working set, prefilled from last session, PR detection,
-  per-exercise history with trend chart, progressive-overload hints ("all sets clean
-  last time → add weight").
-- **Progress page** — overall %, streak, adherence, cardio %, gym time, phase timeline,
-  105-day heatmap, session-duration and lift-progression charts, weekly volume, notes
-  timeline, weekly fatigue check-in (surfaces the program's own reduce-cardio rule),
-  VO2-swap reminder after week 6.
-- **Skips & notes** — skip a day with a reason, add notes to any day, reopen/edit
-  past days.
-- **Onboarding** — "I'm on Week 3, Monday" seeding: marks everything before your
-  current day as done (assumed), calendar-anchored from that date.
-- **Data safety** — export/import JSON backups (Settings). Backup nudge each closed week.
+**Today**
+- Opens on today's workout. The day shown is always the one you assigned to
+  today's real weekday; a 4 AM rollover keeps 1 AM sessions on the previous day.
+- Every exercise with sets, reps or duration, warm-up vs working sets, rest
+  times, technique notes, "each side" markers and superset grouping.
+- Tick sets → exercise → day → week completes automatically. Partial work stays
+  partial.
+- **Organize day**: reorder exercises and sections, add or delete sets, skip a
+  single exercise, edit reps/duration/rest. Edits during a workout apply to that
+  day only, silently; editing a day you're browsing asks whether to apply it to
+  the whole phase.
+- **Band ↔ Cable** toggle on band exercises (that day only), with separate
+  weight history per mode.
+
+**Timers**
+- Workout stopwatch that survives phone locks, editable at any time.
+- Rest countdowns that start automatically when you tick a set (−30/+30/skip).
+- Hold and interval timers; edited durations are remembered per exercise and
+  step aside when the program itself progresses them.
+- Ground-contact tap counter for Freestyle Jumping with the 40–50 cap warning.
+
+**Logging**
+- Weight and reps on every set, with −/+ 2.5 kg steppers.
+- Weight pre-fills from last time; each row shows **what you actually lifted
+  last session — weight and reps**.
+- PR detection, per-exercise history with trend charts, partial-session flags,
+  substitution notes and named "exercise of choice" slots.
+- "Add weight" hint that fires only when all working sets were clean.
+
+**Video**
+- Exercise videos play **inside the app** — half screen, expandable to full
+  screen, with normal player controls. (Video is the only feature that needs a
+  network connection.)
+
+**Progress**
+- Overall %, streak, adherence, cardio %, gym time, weeks done.
+- This week vs last week: volume, sets, gym time, cardio.
+- Phase timeline, full-program heatmap, duration / lift / volume charts.
+- Weekly fatigue check-in that surfaces the program's own reduce-cardio rule.
+
+**Settings**
+- Active program switcher, per-program training weekdays and rollover hour,
+  "Where are you now?" week fix, accent colour (11 swatches + custom),
+  reminders, timer-override reset, JSON export/import, full reset.
 
 ## Development
 
-Zero-build vanilla ES modules. Serve locally:
-
 ```bash
-python3 -m http.server 8080
-# open http://localhost:8080
+python3 -m http.server 8080   # open http://localhost:8080
+node tests/fidelity.mjs       # verify both programs against their source tables
+node scripts/gen-icons.mjs    # regenerate icons (generated, not committed)
 ```
 
-Run the program-data fidelity checks (resolved sets/reps/rest vs the source tables):
+Deployment is automatic: every push runs the fidelity tests and publishes to the
+`gh-pages` branch via `.github/workflows/pages.yml`.
 
-```bash
-node tests/fidelity.mjs
-```
+- [CHANGELOG.md](CHANGELOG.md) — every version, from the first build to now
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — data model, program registry,
+  how to add a program, and the performance rules
 
-Regenerate icons (they are generated, not committed): `node scripts/gen-icons.mjs`
+## Future ideas
 
-## Structure
-
-```
-index.html            app shell
-css/app.css           design system (dark, mobile-first)
-js/program.js         ★ the entire 15-week program as data + week resolver
-js/state.js           localStorage store + export/import
-js/schedule.js        calendar ↔ program-day mapping, rollover hour
-js/completion.js      set → exercise → day → week cascade, history, PRs
-js/timers.js          stopwatch, countdowns, chime, wake lock
-js/charts.js          hand-rolled SVG charts
-js/views/*.js         day / program / progress / settings / sheets
-sw.js                 offline cache
-tests/fidelity.mjs    data fidelity spot-checks
-```
-
-## Future ideas (backlog)
-
-- Warm-up weight calculator (% of working set) & plate calculator
-- Weekly body-weight log + trend chart
-- Daily nutrition checklist (2,500 kcal / 180–200 g protein / creatine 5 g)
-- Jump & ground-contact weekly volume analytics
-- Exercise substitution tracking ("did X instead")
+- Warm-up weight calculator and plate calculator
+- Weekly body-weight log and trend
+- Daily nutrition checklist (2,500 kcal / 180–200 g protein / creatine)
+- Jump and ground-contact volume analytics
 - Cross-device sync (needs a backend)
-- Embedded exercise demo GIFs

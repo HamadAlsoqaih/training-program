@@ -1,7 +1,7 @@
 {
-  "name": "15-Week Training Program",
-  "short_name": "15-Week",
-  "description": "15-week volleyball strength & plyometric program tracker",
+  "name": "Hamad's Training",
+  "short_name": "Training",
+  "description": "Personal training program tracker — plyometrics, strength and rehab",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",

@@ -147,7 +147,19 @@ document.addEventListener('visibilitychange', () => {
 });
 
 if ('serviceWorker' in navigator && location.protocol === 'https:') {
-  window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(() => {}); });
+  window.addEventListener('load', async () => {
+    // The site moved path once (personal-15week-program → training). A browser
+    // that loaded the old address still holds a worker registered under the old
+    // scope, and it would happily keep serving that old app shell. Drop any
+    // registration that is not this page's, then register ours.
+    try {
+      const here = new URL('./', location.href).href;
+      for (const reg of await navigator.serviceWorker.getRegistrations()) {
+        if (reg.scope !== here) await reg.unregister();
+      }
+    } catch { /* not fatal — carry on and register */ }
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  });
 }
 
 render();

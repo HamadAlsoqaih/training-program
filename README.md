@@ -5,7 +5,7 @@ from their source tables, with progress tracking, timers, weight logging,
 in-app exercise videos and a progress dashboard.
 No backend, no login — everything lives on your phone.
 
-**Open it:** https://hamadalsoqaih.github.io/personal-15week-program/
+**Open it:** https://hamadalsoqaih.github.io/training/
 In Safari: **Share → Add to Home Screen** for a full-screen app that works
 offline at the gym.
 
@@ -62,6 +62,9 @@ one is active. Logged weights are shared, so your numbers carry across.
 **Progress**
 - Overall %, streak, adherence, cardio %, gym time, weeks done.
 - This week vs last week: volume, sets, gym time, cardio.
+- **Jump volume**: ground contacts per calendar week across both programs,
+  with a spike warning when a week climbs more than 30% on the last, and
+  Freestyle cap adherence from your tapped blocks.
 - Phase timeline, full-program heatmap, duration / lift / volume charts.
 - Weekly fatigue check-in that surfaces the program's own reduce-cardio rule.
 
@@ -76,6 +79,7 @@ one is active. Logged weights are shared, so your numbers carry across.
 python3 -m http.server 8080   # open http://localhost:8080
 node tests/fidelity.mjs       # verify both programs against their source tables
 node tests/schedule.mjs       # anchors, future starts, finished programs
+node tests/analytics.mjs      # jump volume bucketing and the spike warning
 node scripts/gen-icons.mjs    # regenerate icons (generated, not committed)
 ```
 
@@ -91,5 +95,4 @@ Deployment is automatic: every push runs the fidelity tests and publishes to the
 - Warm-up weight calculator and plate calculator
 - Weekly body-weight log and trend
 - Daily nutrition checklist (2,500 kcal / 180–200 g protein / creatine)
-- Jump and ground-contact volume analytics
 - Cross-device sync (needs a backend)

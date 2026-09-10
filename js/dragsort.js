@@ -37,7 +37,7 @@ export function makeSortable(list, { onCommit, handleFilter } = {}) {
     const kids = [...list.children];
     st.items = kids.map((el) => {
       const r = el.getBoundingClientRect();
-      return { el, top: r.top, h: r.height + 8 /* card gap */ };
+      return { el, top: r.top, h: r.height + 8 /* card gap */, mid: r.top + r.height / 2 };
     });
     st.from = kids.indexOf(st.el);
     st.to = st.from;
@@ -57,10 +57,21 @@ export function makeSortable(list, { onCommit, handleFilter } = {}) {
     e.preventDefault();
     st.el.style.transform = `translateY(${dy}px)`;
 
-    // where would it land?
-    const h = st.items[st.from].h;
-    let to = st.from + Math.round(dy / h);
-    to = Math.max(0, Math.min(st.items.length - 1, to));
+    // Where would it land? Compare the dragged card's centre against each
+    // neighbour's centre — cards on this screen vary a lot in height, so a
+    // fixed row height would drop things in the wrong place.
+    const self = st.items[st.from];
+    const h = self.h;
+    const centre = self.mid + dy;
+    let to = st.from;
+    for (let i = st.from + 1; i < st.items.length; i++) {
+      if (centre > st.items[i].mid) to = i; else break;
+    }
+    if (to === st.from) {
+      for (let i = st.from - 1; i >= 0; i--) {
+        if (centre < st.items[i].mid) to = i; else break;
+      }
+    }
     if (to !== st.to) {
       st.to = to;
       st.items.forEach((it, i) => {
@@ -93,8 +104,12 @@ export function makeSortable(list, { onCommit, handleFilter } = {}) {
   list.addEventListener('pointerdown', (e) => {
     if (e.button != null && e.button !== 0) return;
     if (e.target.closest(NO_DRAG)) return;
-    const el = e.target.closest('[data-sortable]');
-    if (!el || el.parentElement !== list) return;
+    // Walk up to the direct child of the list: for a lone card that is the
+    // card, for a superset it is the group — so grabbing either card of a
+    // superset drags the pair as one unit.
+    let el = e.target;
+    while (el && el !== list && el.parentElement !== list) el = el.parentElement;
+    if (!el || el === list || !el.hasAttribute?.('data-sortable')) return;
     if (handleFilter && !handleFilter(el)) return;
 
     st = { el, id: e.pointerId, x0: e.clientX, y0: e.clientY, active: false, timer: null };

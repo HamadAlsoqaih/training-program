@@ -362,6 +362,11 @@ function exerciseCard(ctx, entry, pos, count) {
   const card = h('div', {
     class: `ex${done ? ' done' : ''}${isCurrent ? ' current' : ''}${item.opt ? ' optional' : ''}${entry.skipped ? ' skipped' : ''}`,
     'data-exkey': key,
+    // Set here (not in the section loop) so a card rebuilt by refreshCard()
+    // after a tick keeps its drag handle — otherwise reordering silently died
+    // on exactly the day you were training.
+    'data-sortable': '',
+    'data-iis': String(entry.ii),
   });
 
   // --- head ---

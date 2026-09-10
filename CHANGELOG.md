@@ -4,6 +4,53 @@ Every version of this app, from the first build to today. Newest first.
 
 ---
 
+## v7 — Jump volume tracking, drag fix, new address
+
+**Moving house**
+- The app now lives at **https://hamadalsoqaih.github.io/training/** (it was
+  `.../personal-15week-program/`, a name that stopped being true once there were
+  two programs).
+- **Your data comes with it.** Browser storage is scoped to the origin
+  (`hamadalsoqaih.github.io`), not the path, so every logged set, weight and
+  setting survives the move untouched. The only thing that breaks is the old
+  address — re-add the app to your home screen from the new one and delete the
+  old icon.
+- On load the app now unregisters any service worker left over from the old
+  path, so a browser that once cached the old app shell can't keep serving it.
+  Cache bumped to `t15-v7`.
+
+**Jump volume (ground contacts)**
+- New card on **Progress**: total ground contacts per **calendar** week for the
+  last 12 weeks, counting plyo from **both programs** in the same bar — the two
+  programs number their weeks differently, but your legs only know the calendar.
+- Every plyo drill is tagged in the exercise catalog with `jump` and, where one
+  rep is not one contact, a multiplier — Consecutive Hurdle Jump counts 3 (the
+  program's own "3 hurdles = 1 rep"). "Each side" drills count double.
+- Counting follows the reps you actually logged, falling back to the prescribed
+  reps — the same rule the rest of the app uses. Unticked sets count for nothing.
+- **Freestyle Jumping uses your real tapped contacts**, not an estimate; only an
+  untapped block falls back to the middle of the 40–50 cap. The card also
+  reports how many tapped blocks landed inside that cap.
+- **Spike warning**: an amber banner when the week is more than 30% up on the
+  last one (and above a floor, so 8 → 12 contacts never nags). It names the
+  numbers and points at the program's own fatigue rule.
+- The post-session summary now shows the day's jump contacts beside duration,
+  sets and PRs.
+- New `js/analytics.js`, built off the existing memoised history index — no new
+  storage and no extra scan, so Progress stays as fast as it was.
+
+**Fixed: drag stopped working on the day you were training**
+- `data-sortable` was applied when a day was first drawn, but ticking a set
+  rebuilds that card — and the rebuilt card lost the attribute. So reordering
+  worked while browsing and quietly died on exactly the day you were using. The
+  attribute now lives on the card itself and survives every rebuild.
+- Grabbing a card *inside* a superset used to do nothing; the drag now resolves
+  to the whole superset, so the pair moves as one unit.
+- The drop position is worked out from the neighbours' midpoints rather than a
+  fixed row height, so cards of different heights land where you put them.
+
+---
+
 ## v6 — Real dates, future starts, cross-program progression
 
 **The date bug (and what caused it)**

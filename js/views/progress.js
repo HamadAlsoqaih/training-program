@@ -11,6 +11,7 @@ import { dayProgress, weekProgress, historyFor, plannedDay } from '../completion
 import { todayIndex, indexToId, dateForId, fmtDate, weekdayName, currentWeek } from '../schedule.js';
 import { fmtMs } from '../timers.js';
 import { lineChart, barChart } from '../charts.js';
+import { jumpVolumeByWeek, spikeCheck, freestyleBlocks, FREESTYLE } from '../analytics.js';
 import { historySheet } from './sheets.js';
 
 export function renderProgress(rerender) {
@@ -79,6 +80,8 @@ export function renderProgress(rerender) {
   ));
 
   container.append(weeklyCompareCard(pid, curWeek));
+  const jumpCard = jumpVolumeCard();
+  if (jumpCard) container.append(jumpCard);
 
   // phase timeline
   container.append(h('div', { class: 'card' },
@@ -227,6 +230,55 @@ function weeklyCompareCard(pid, curWeek) {
     row('Sets done', String(now.sets), String(prev.sets), delta(now.sets, prev.sets)),
     row('Gym time', fmtT(now.timeMs), fmtT(prev.timeMs), delta(now.timeMs, prev.timeMs, (x) => fmtMs(x))),
     row('Cardio sessions', String(now.cardio), String(prev.cardio), delta(now.cardio, prev.cardio)),
+  );
+}
+
+// --- jump volume ---------------------------------------------------------------
+// Ground contacts by CALENDAR week, so plyo from either program lands in the
+// same bar. The point is the shape of the line, not the exact number.
+function jumpVolumeCard() {
+  const buckets = jumpVolumeByWeek({ weeks: 12 });
+  if (!buckets.some((b) => b.contacts > 0)) return null;
+  const spike = spikeCheck(buckets);
+  const fs = freestyleBlocks({ weeks: 12 });
+  const wkLabel = (ms) => {
+    const d = new Date(ms);
+    return `${d.getDate()}/${d.getMonth() + 1}`;
+  };
+  const bars = buckets.map((b) => ({ label: wkLabel(b.weekStart), y: b.contacts }));
+  const pct = spike.pct == null ? null : Math.round(spike.pct * 100);
+  const trend = spike.prev <= 0
+    ? (spike.cur > 0 ? 'first week back on jumps' : 'nothing logged yet')
+    : pct === 0 ? 'level with last week'
+    : `${pct > 0 ? '▲' : '▼'} ${Math.abs(pct)}% vs last week`;
+
+  return h('div', { class: 'card' },
+    h('div', { class: 'h2', style: 'font-size:14px;margin-bottom:2px' }, 'Jump volume (ground contacts)'),
+    h('div', { class: 'tiny faint', style: 'margin-bottom:6px' }, 'Both programs · by calendar week'),
+    h('div', { class: 'row', style: 'align-items:baseline;gap:8px;margin-bottom:4px' },
+      h('div', { style: 'font-size:22px;font-weight:800;font-variant-numeric:tabular-nums' }, String(Math.round(spike.cur))),
+      h('div', { class: 'small dim grow' }, 'this week'),
+      h('div', {
+        class: 'tiny',
+        style: `font-weight:700;color:${spike.level === 'ok' ? 'var(--faint)' : 'var(--warn)'}`,
+      }, trend)),
+    h('div', { class: 'chartwrap', html: barChart(bars, { unit: 'contacts' }) }),
+    spike.level === 'spike' ? h('div', {
+      class: 'banner', style: 'margin-top:10px;border-color:rgba(251,146,60,.4)',
+    },
+      h('div', { style: 'font-weight:700;margin-bottom:4px' }, '⚠️ Jump volume spike'),
+      `You are ${pct}% above last week (${Math.round(spike.prev)} → ${Math.round(spike.cur)} contacts). `
+      + 'That is the kind of jump that shows up later as knee or achilles pain. Hold this week where it is '
+      + 'rather than adding more, and follow the program’s own fatigue rule: drop cardio to 5 days or lower '
+      + 'the incline, and back off plyo volume if your jumps feel flat.',
+    ) : null,
+    spike.level === 'watch' && spike.prev > 0 ? h('div', { class: 'tiny faint', style: 'margin-top:8px' },
+      `Climbing — ${pct}% up on last week. Fine for now; worth watching if it keeps rising.`) : null,
+    spike.level === 'watch' && spike.prev <= 0 ? h('div', { class: 'tiny faint', style: 'margin-top:8px' },
+      'Straight back into jumping after a week off — ease in rather than starting where you left off.') : null,
+    fs.total ? h('div', { class: 'tiny faint', style: 'margin-top:8px' },
+      `Freestyle blocks tapped out: ${fs.inRange}/${fs.total} inside the ${FREESTYLE.warn}–${FREESTYLE.cap} cap`
+      + (fs.over ? ` · ${fs.over} over` : '') + (fs.under ? ` · ${fs.under} short` : '')) : null,
   );
 }
 

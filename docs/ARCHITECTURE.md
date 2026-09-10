@@ -11,7 +11,7 @@ sw.js                   offline cache (bump CACHE on every release)
 manifest.webmanifest    PWA metadata
 js/
   app.js                boot, hash router, theme accent, rest-countdown bar
-  exercises.js          shared exercise catalog (names, notes, Mux video ids)
+  exercises.js          shared exercise catalog (names, notes, Mux ids, jump tags)
   schemes.js            prescription builders: sr / time / wuws + formatting
   program.js            program registry + facade (getWeek, getDay, caching)
   programs/p15.js       15-Week Program definition
@@ -19,12 +19,14 @@ js/
   state.js              localStorage store, schema v2 + migration, export/import
   schedule.js           calendar ↔ program-day mapping, weekday map, swaps
   completion.js         planned days, history index, completion cascade, edits
+  analytics.js          jump / ground-contact volume by calendar week + spikes
+  dragsort.js           hold-to-drag reordering (pointer events, transform only)
   timers.js             stopwatch, countdowns, chime, wake lock
   video.js              in-app HLS player (native on iOS, hls.js elsewhere)
   charts.js             hand-rolled SVG charts
   util.js               h() DOM helper, toast, progress rings
   views/                day · programview · progress · settings · sheets
-tests/fidelity.mjs      encoded programs vs the source tables
+tests/                  fidelity (program data) · schedule · analytics
 ```
 
 ## Data model
@@ -128,6 +130,16 @@ had *all working sets* done and weight-logged. Warm-ups are excluded.
 `exId@prescribedValue`. When the program itself progresses a duration the key
 changes, so the new prescription automatically wins.
 
+**Jump volume is bucketed by the calendar, not by program weeks.** The two
+programs number their weeks differently, so `js/analytics.js` buckets ground
+contacts into real Monday-to-Sunday weeks — that is what lets plyo from either
+program land in the same bar. A completed set counts
+`reps × EX[ex].contacts × (side ? 2 : 1)`, with logged reps preferred over
+prescribed ones; a tapped Freestyle block counts its real contacts instead.
+`spikeCheck()` flags a week more than 30% above the previous one once it clears
+a floor, so small numbers never nag. It reads the same memoised `historyIndex()`
+everything else uses and memoises its own result on `store.rev()`.
+
 ## Performance rules
 
 This app is used mid-set on a phone. Three rules protect that:
@@ -158,6 +170,8 @@ part of the app that needs a network connection — everything else works offlin
 
 ```bash
 node tests/fidelity.mjs      # encoded programs vs the source tables
+node tests/schedule.mjs      # anchors, future starts, finished programs
+node tests/analytics.mjs     # jump volume bucketing, multipliers, spike warning
 python3 -m http.server 8080  # then drive with Playwright at 390×844
 ```
 

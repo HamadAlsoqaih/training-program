@@ -24,6 +24,8 @@ jobs:
         run: node tests/fidelity.mjs
       - name: Schedule checks
         run: node tests/schedule.mjs
+      - name: Jump volume analytics checks
+        run: node tests/analytics.mjs
 
   deploy:
     needs: test

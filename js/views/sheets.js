@@ -23,6 +23,7 @@ import {
 } from '../schedule.js';
 import { fmtMs } from '../timers.js';
 import { lineChart } from '../charts.js';
+import { jumpContactsForDay } from '../analytics.js';
 import { openVideo } from '../video.js';
 
 const root = () => document.getElementById('sheet-root');
@@ -348,6 +349,7 @@ export function skipSheet(pid, dayId, onDone) {
 // --- session summary ---------------------------------------------------------
 export function summarySheet({ pid, dayId, elapsed, setsDone, prs }, onClose) {
   const day = getDay(pid, dayId);
+  const contacts = Math.round(jumpContactsForDay(pid, dayId));
   openSheet(
     h('div', { class: 'center', style: 'padding:8px 0 4px' },
       h('div', { class: 'confetti-pop', style: 'font-size:52px' }, '🏐'),
@@ -358,6 +360,8 @@ export function summarySheet({ pid, dayId, elapsed, setsDone, prs }, onClose) {
       h('div', { class: 'stat' }, h('div', { class: 'v' }, fmtMs(elapsed)), h('div', { class: 'k' }, 'Duration')),
       h('div', { class: 'stat' }, h('div', { class: 'v' }, String(setsDone)), h('div', { class: 'k' }, 'Sets done')),
       h('div', { class: 'stat' }, h('div', { class: 'v' }, String(prs.length)), h('div', { class: 'k' }, 'PRs')),
+      contacts ? h('div', { class: 'stat' },
+        h('div', { class: 'v' }, String(contacts)), h('div', { class: 'k' }, 'Jump contacts')) : null,
     ),
     prs.length ? h('div', { class: 'card', style: 'border-color:var(--accent-soft)' },
       h('div', { class: 'small', style: 'font-weight:800;color:var(--accent);margin-bottom:4px' }, '🎉 New bests'),

@@ -97,15 +97,25 @@ function buildHistoryIndex() {
     const days = store.prog(pid).days;
     for (const dayId of Object.keys(days)) {
       const rec = days[dayId];
-      if (!rec || rec.auto || !rec.ex) continue;
+      if (!rec || rec.auto || (!rec.ex && !rec.contacts)) continue;
       const planned = plannedDay(pid, dayId);
       if (!planned) continue;
       const index0 = idToIndex(dayId);
       const t = dateForIndex(index0, pid)?.getTime() ?? index0 * DAY_MS;
       for (const e of planned.entries) {
-        const exRec = rec.ex[e.key];
-        if (!exRec) continue;
-        const raw = exRec.sets || [];
+        const exRec = rec.ex?.[e.key];
+        // Tapped ground contacts (Freestyle Jumping) live on the day, not on
+        // the exercise, so they are picked up here too — jump volume needs the
+        // real count, not an estimate. Guarded: ordinary days pay nothing.
+        let taps = null;
+        if (rec.contacts) {
+          for (let si = 0; si < e.sets; si++) {
+            const v = rec.contacts[`${e.key}:${si}`];
+            if (v) (taps || (taps = []))[si] = v;
+          }
+        }
+        if (!exRec && !taps) continue;
+        const raw = exRec?.sets || [];
         const sets = [];
         let doneCount = 0, wsDone = 0;
         for (let si = 0; si < e.sets; si++) {
@@ -114,7 +124,7 @@ function buildHistoryIndex() {
           sets.push({ ...x, i: si });
           if (x.done) { doneCount++; if (si >= e.wu) wsDone++; }
         }
-        if (!sets.length && !exRec.alt) continue;
+        if (!sets.length && !exRec?.alt && !taps) continue;
         // Order by when it was ACTUALLY logged when we know that, so history is
         // true chronology across programs; fall back to the day's calendar date
         // for older records (and days logged before loggedAt existed).
@@ -123,8 +133,8 @@ function buildHistoryIndex() {
         list.push({
           pid, dayId, index: index0, t, loggedAt, at: loggedAt || t, sets,
           total: e.sets, doneCount, wu: e.wu, wsTotal: e.sets - e.wu, wsDone,
-          defReps: e.sch.reps ?? null,
-          alt: exRec.alt || null, mode: exRec.mode || 'band',
+          defReps: e.sch.reps ?? null, side: !!e.item.side, taps,
+          alt: exRec?.alt || null, mode: exRec?.mode || 'band',
           note: rec.note || null,
         });
       }

@@ -24,14 +24,17 @@ one is active. Logged weights are shared, so your numbers carry across.
 **Today**
 - Opens on today's workout. The day shown is always the one you assigned to
   today's real weekday; a 4 AM rollover keeps 1 AM sessions on the previous day.
+- Start a program on a future date and Today counts down to it, then starts by
+  itself; a finished program says so instead of guessing.
 - Every exercise with sets, reps or duration, warm-up vs working sets, rest
   times, technique notes, "each side" markers and superset grouping.
 - Tick sets → exercise → day → week completes automatically. Partial work stays
   partial.
-- **Organize day**: reorder exercises and sections, add or delete sets, skip a
-  single exercise, edit reps/duration/rest. Edits during a workout apply to that
-  day only, silently; editing a day you're browsing asks whether to apply it to
-  the whole phase.
+- **Hold a card and drag** to reorder, like any phone app (supersets move as one
+  unit). **Skip a single exercise** straight from its card.
+- **Organize day** adds: move whole sections, edit reps/duration/rest, add or
+  delete sets. Edits during a workout apply to that day only, silently; editing a
+  day you're browsing asks whether to apply it to the whole phase.
 - **Band ↔ Cable** toggle on band exercises (that day only), with separate
   weight history per mode.
 
@@ -45,7 +48,8 @@ one is active. Logged weights are shared, so your numbers carry across.
 **Logging**
 - Weight and reps on every set, with −/+ 2.5 kg steppers.
 - Weight pre-fills from last time; each row shows **what you actually lifted
-  last session — weight and reps**.
+  last session — weight and reps**. Progression follows the **exercise, not the
+  program**: a weight logged in one program shows up in the other, labelled.
 - PR detection, per-exercise history with trend charts, partial-session flags,
   substitution notes and named "exercise of choice" slots.
 - "Add weight" hint that fires only when all working sets were clean.
@@ -71,6 +75,7 @@ one is active. Logged weights are shared, so your numbers carry across.
 ```bash
 python3 -m http.server 8080   # open http://localhost:8080
 node tests/fidelity.mjs       # verify both programs against their source tables
+node tests/schedule.mjs       # anchors, future starts, finished programs
 node scripts/gen-icons.mjs    # regenerate icons (generated, not committed)
 ```
 

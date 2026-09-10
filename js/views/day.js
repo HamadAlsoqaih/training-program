@@ -12,6 +12,7 @@
 import { h, toast } from '../util.js';
 import {
   EX, getDay, getWeek, schemeLabel, fmtSecs, ytUrl, hasVideo, displayName, totalDays,
+  getProgram, PROGRAM_LIST,
 } from '../program.js';
 import * as store from '../state.js';
 import {
@@ -19,11 +20,11 @@ import {
   firstOpenIndex, lastSessionFor, overloadHint, historyFor, bestWeight, dayTime,
   toggleSet, setLog, markDay, setNote, completeSection, setExerciseField,
   toggleSkipExercise, deleteSet, addSet, moveExercise, moveSection,
-  hasCustomPlan, resetDayPlan,
+  hasCustomPlan, resetDayPlan, setExerciseOrder,
 } from '../completion.js';
 import {
   idToIndex, indexToId, clampIndex, todayId, todayIndex, dateForId, fmtDate,
-  weekdayName, isSwapped,
+  weekdayName, isSwapped, programStatus, realToday, toISO,
 } from '../schedule.js';
 import {
   startSession, pauseSession, resumeSession, finishSession, sessionElapsedMs,
@@ -34,6 +35,7 @@ import {
   whereAmISheet, editExerciseSheet,
 } from './sheets.js';
 import { openVideo } from '../video.js';
+import { makeSortable } from '../dragsort.js';
 
 let timerInterval = null;
 let organize = false;   // "organize day" mode — reveals reorder / delete / skip
@@ -53,11 +55,13 @@ export function renderDay(pid, dayId, rerender) {
   const prog = dayProgress(pid, dayId);
   const index = idToIndex(dayId);
   const isActive = pid === store.activePid();
-  const isToday = isActive && dayId === todayId();
+  const status = programStatus(pid);
+  // A clamped index is NOT today — only an active program can have a today.
+  const isToday = isActive && status.state === 'active' && dayId === todayId();
   const week = getWeek(pid, day.week);
   const sessionActive = s.session?.dayId === dayId && s.session?.pid === pid;
   const date = isActive ? dateForId(dayId, pid) : null;
-  const beforeT = dayTime(pid, dayId);
+  const dayCtx = { pid, dayId };
 
   clearInterval(timerInterval);
   // organize mode never leaks from one day to another
@@ -97,6 +101,8 @@ export function renderDay(pid, dayId, rerender) {
       }, '›'),
     ),
     h('div', { class: 'center dim small', style: 'font-weight:600' }, day.title),
+    isActive ? h('div', { class: 'center tiny faint', style: 'margin-top:3px' },
+      `Today is ${fmtDate(realToday(pid))}`) : null,
     !isActive ? h('div', { class: 'center', style: 'margin-top:6px' },
       h('span', { class: 'chip' }, `${week.program.name} — not your active program`)) : null,
     !isToday && isActive ? h('div', { class: 'center', style: 'margin-top:6px' },
@@ -106,7 +112,7 @@ export function renderDay(pid, dayId, rerender) {
   if (week.badge) {
     container.append(h('div', { class: `banner ${week.badge.startsWith('DELOAD') || week.badge.includes('DELOAD') ? 'deload' : ''}` }, week.badge));
   }
-  if (isToday) {
+  if (isToday && status.state === 'active') {
     const behind = todayIndex() - firstOpenIndex(pid);
     if (behind > 0) {
       container.append(h('div', { class: 'banner behind' },
@@ -153,11 +159,11 @@ export function renderDay(pid, dayId, rerender) {
   ));
   if (organize) {
     container.append(h('div', { class: 'banner', style: 'margin-top:8px' },
-      'Organize mode: reorder sections and exercises, delete or add sets, skip exercises, and edit reps/timers. Tap “Done organizing” when finished.'));
+      'Hold any exercise card and drag it to reorder — that works any time, not just here. Organize mode adds: move whole sections, edit reps and timers, and add or delete sets.'));
   }
 
   // ---- sections -----------------------------------------------------------
-  const ctx = { pid, dayId, planned, beforeT, rerender, cardEls, container };
+  const ctx = { pid, dayId, planned, dayCtx, rerender, cardEls, container };
   const currentKey = sessionActive ? findCurrentKey(pid, dayId, planned) : null;
   ctx.currentKey = currentKey;
 
@@ -184,24 +190,46 @@ export function renderDay(pid, dayId, rerender) {
     );
     container.append(head);
 
-    // group consecutive superset items into one visual block
+    // Cards live in a sortable list. A superset is ONE draggable unit so a pair
+    // never gets split. Each unit remembers which program items it holds, so a
+    // visual reorder maps straight back to the saved order.
+    const list = h('div', { class: 'sec-list' });
     let i = 0;
     while (i < entries.length) {
       const e = entries[i];
       if (e.item.ss && entries[i + 1]?.item.ss === e.item.ss) {
-        const group = h('div', { class: 'ss-group' }, h('span', { class: 'ss-label' }, 'Superset'));
+        const group = h('div', { class: 'ss-group', 'data-sortable': '' },
+          h('span', { class: 'ss-label' }, 'Superset'));
+        const iis = [];
         let j = i;
         while (j < entries.length && entries[j].item.ss === e.item.ss) {
           group.append(buildCard(ctx, entries[j], j, entries.length));
+          iis.push(entries[j].ii);
           j++;
         }
-        container.append(group);
+        group.dataset.iis = iis.join(',');
+        list.append(group);
         i = j;
       } else {
-        container.append(buildCard(ctx, e, i, entries.length));
+        const card = buildCard(ctx, e, i, entries.length);
+        card.setAttribute('data-sortable', '');
+        card.dataset.iis = String(e.ii);
+        list.append(card);
         i++;
       }
     }
+    container.append(list);
+
+    makeSortable(list, {
+      onCommit: (from, to) => {
+        const units = [...list.children].map((el) => el.dataset.iis.split(',').map(Number));
+        const [moved] = units.splice(from, 1);
+        units.splice(to, 0, moved);
+        setExerciseOrder(pid, dayId, si, units.flat());
+        toast('Order saved');
+        rerender({ keepScroll: true });
+      },
+    });
   });
 
   container.append(footerButtons(pid, dayId, rec, prog, rerender));
@@ -211,6 +239,67 @@ export function renderDay(pid, dayId, rerender) {
       h('div', { class: 'small dim', style: 'margin-top:3px;white-space:pre-wrap' }, rec.note)));
   }
   return container;
+}
+
+// "15-Week Program" → "15-Week"; "12-Week Vert Code" → "12-Week Vert Code"
+const shortProgramName = (pid) => getProgram(pid).name.replace(/ Program$/, '');
+
+// Shown on #/today when the active program has not started yet, or has ended.
+export function renderProgramGate(pid, status, rerender) {
+  const program = getProgram(pid);
+  const other = PROGRAM_LIST.filter((p) => p.id !== pid && store.prog(p.id).started);
+  const before = status.state === 'before';
+  const wrap = h('div');
+
+  wrap.append(h('div', { class: 'dayhead' },
+    h('div', { class: 'center' },
+      h('div', { class: 'h1' }, program.name),
+      h('div', { class: 'tiny faint', style: 'margin-top:4px' }, `Today is ${fmtDate(realToday(pid))}`)),
+  ));
+
+  wrap.append(h('div', { class: 'card restday' },
+    h('div', { class: 'emoji' }, before ? '📅' : '🏁'),
+    h('div', { class: 'h2', style: 'margin-top:8px' },
+      before ? `Starts ${fmtDate(status.startDate)}` : 'Program complete'),
+    h('div', { class: 'bignum', style: 'margin-top:8px;color:var(--accent)' },
+      before ? `in ${status.daysUntil} day${status.daysUntil === 1 ? '' : 's'}`
+             : `${program.weeks} weeks done`),
+    h('div', { class: 'small dim', style: 'margin:10px auto 0;max-width:330px' },
+      before
+        ? 'Nothing to train yet — this program begins on that date and today\u2019s workout will appear here automatically.'
+        : `The last day was ${fmtDate(status.endDate)}. Review it on the Progress tab, or start something new.`),
+  ));
+
+  if (before) {
+    wrap.append(h('button', {
+      class: 'btn primary block', style: 'min-height:52px',
+      onclick: () => {
+        if (!confirm(`Start ${program.name} today instead of ${fmtDate(status.startDate)}?`)) return;
+        store.update((s) => {
+          const setup = s.programs[pid].setup;
+          setup.anchorDate = toISO(realToday(pid));
+          setup.anchorDay = 'w1d1';
+        });
+        toast('Started today');
+        rerender();
+      },
+    }, '▶ Start today instead'));
+    wrap.append(h('a', { class: 'btn block', style: 'margin-top:8px', href: `#/day/${pid}/w1d1` },
+      'Preview Day 1'));
+  } else {
+    wrap.append(h('a', { class: 'btn primary block', style: 'min-height:52px', href: '#/progress' },
+      'See your progress'));
+  }
+
+  wrap.append(h('a', { class: 'btn block', style: 'margin-top:8px', href: `#/program/${pid}` },
+    'Browse the whole program'));
+  for (const p of other) {
+    wrap.append(h('button', {
+      class: 'btn block', style: 'margin-top:8px',
+      onclick: () => { store.setActiveProgram(p.id); toast(`${p.name} is now active`); rerender(); },
+    }, `⇄ Switch to ${p.name}`));
+  }
+  return wrap;
 }
 
 const labelFor = (pid, dayId) => {
@@ -255,7 +344,7 @@ function refreshSectionHeads(ctx) {
 const ARM_CHOICE = new Set(['triceps', 'biceps']);
 
 function exerciseCard(ctx, entry, pos, count) {
-  const { pid, dayId, beforeT, rerender } = ctx;
+  const { pid, dayId, dayCtx, rerender } = ctx;
   const { item, key, sch } = entry;
   const ex = EX[item.ex];
   const done = exerciseDone(pid, dayId, entry);
@@ -302,6 +391,15 @@ function exerciseCard(ctx, entry, pos, count) {
       (ex.note || item.note) ? h('div', { class: 'ex-note' }, [ex.note, item.note].filter(Boolean).join(' · ')) : null,
     ),
     h('div', { class: 'ex-icons' },
+      h('button', {
+        class: `ytlink${entry.skipped ? ' on' : ''}`,
+        'aria-label': entry.skipped ? 'Unskip this exercise' : 'Skip this exercise',
+        onclick: () => {
+          toggleSkipExercise(pid, dayId, key, !entry.skipped, 'day');
+          toast(entry.skipped ? `${ex.name} back in` : `${ex.name} skipped`);
+          rerender({ keepScroll: true });
+        },
+      }, entry.skipped ? '↺' : '⤼'),
       hasVideo(item.ex) ? h('button', {
         class: 'ytlink vid-open', 'aria-label': 'Play exercise video',
         onclick: () => openVideo(item.ex),
@@ -334,7 +432,7 @@ function exerciseCard(ctx, entry, pos, count) {
 
   // --- arm "exercise of choice" name ---
   if (isArmChoice) {
-    const lastAlt = lastSessionFor(item.ex, beforeT)?.alt;
+    const lastAlt = lastSessionFor(item.ex, dayCtx)?.alt;
     const nameIn = h('input', {
       class: 'txt', style: 'height:42px;margin-top:8px',
       placeholder: lastAlt ? `last time: ${lastAlt}` : 'Which exercise? e.g. Rope Pushdown',
@@ -346,12 +444,12 @@ function exerciseCard(ctx, entry, pos, count) {
 
   // --- overload hint ---
   if (repsBased && !done && !entry.skipped && exerciseSetsDone(pid, dayId, entry) === 0) {
-    const hint = overloadHint(item.ex, beforeT, ex.band ? mode : undefined);
+    const hint = overloadHint(item.ex, dayCtx, ex.band ? mode : undefined);
     if (hint) card.append(h('div', { class: 'hint' }, `Last time: all sets clean at ${hint.lastWeight} kg → add weight today`));
   }
 
   // --- sets ---
-  const last = repsBased ? lastSessionFor(item.ex, beforeT, ex.band ? mode : undefined) : null;
+  const last = repsBased ? lastSessionFor(item.ex, dayCtx, ex.band ? mode : undefined) : null;
   const setsWrap = h('div', { class: 'sets' });
   for (let i = 0; i < entry.sets; i++) {
     setsWrap.append(setRow(ctx, entry, i, last, repsBased));
@@ -408,13 +506,6 @@ function exerciseCard(ctx, entry, pos, count) {
         onclick: () => { moveExercise(pid, dayId, entry.si, entry.ii, +1); rerender({ keepScroll: true }); } }, '↓'),
       h('button', { class: 'btn sm', onclick: () => editExerciseSheet(pid, dayId, entry, rerender) }, '✎ Edit'),
       h('button', { class: 'btn sm', onclick: () => { addSet(pid, dayId, entry); refreshCard(ctx, key); } }, '+ set'),
-      h('button', {
-        class: `btn sm${entry.skipped ? '' : ' danger'}`,
-        onclick: () => {
-          toggleSkipExercise(pid, dayId, key, !entry.skipped, 'day');
-          rerender({ keepScroll: true });
-        },
-      }, entry.skipped ? '↺ Unskip' : '⤼ Skip'),
     ));
   }
 
@@ -494,14 +585,16 @@ function setRow(ctx, entry, i, last, repsBased) {
     }, '🗑') : null,
   );
 
-  // last-session line: what you actually lifted for this set last time
+  // last-session line: what you actually lifted for this set last time —
+  // from ANY program, labelled when it came from a different one.
   if (prevSet && (prevSet.weight != null || prevSet.reps != null)) {
     const reps = prevSet.reps ?? (prevSet.done ? last.defReps : null);
     const parts = [];
     if (prevSet.weight != null) parts.push(`${prevSet.weight} kg`);
     if (reps != null) parts.push(`× ${reps}`);
+    const from = last.pid !== pid ? ` · ${shortProgramName(last.pid)}` : '';
     return h('div', { class: 'setwrap' }, row,
-      h('div', { class: 'lastline' }, `↺ last: ${parts.join(' ')}`));
+      h('div', { class: 'lastline' }, `↺ last: ${parts.join(' ')}${from}`));
   }
   return row;
 }
@@ -627,7 +720,7 @@ function onDayCompleted(pid, dayId, rerender) {
   else elapsed = store.day(dayId, pid)?.elapsedMs || 0;
 
   const planned = plannedDay(pid, dayId);
-  const beforeT = dayTime(pid, dayId);
+  const dayCtx = { pid, dayId };
   const rec = store.day(dayId, pid);
   const prs = [];
   const seen = new Set();
@@ -640,7 +733,8 @@ function onDayCompleted(pid, dayId, rerender) {
     seen.add(e.item.ex);
     const todayW = Math.max(...(exRec.sets || []).map((x) => (x?.weight != null ? +x.weight : -Infinity)));
     if (!isFinite(todayW)) continue;
-    const prevBest = bestWeight(historyFor(e.item.ex).filter((hh) => hh.t < beforeT));
+    const prevBest = bestWeight(historyFor(e.item.ex)
+      .filter((hh) => !(hh.pid === pid && hh.dayId === dayId)));
     if (prevBest === null || todayW > prevBest) prs.push({ name: EX[e.item.ex].name, weight: todayW, prev: prevBest });
   }
   chime('done');

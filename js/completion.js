@@ -115,9 +115,13 @@ function buildHistoryIndex() {
           if (x.done) { doneCount++; if (si >= e.wu) wsDone++; }
         }
         if (!sets.length && !exRec.alt) continue;
+        // Order by when it was ACTUALLY logged when we know that, so history is
+        // true chronology across programs; fall back to the day's calendar date
+        // for older records (and days logged before loggedAt existed).
+        const loggedAt = Math.max(0, ...sets.map((x) => x.loggedAt || 0)) || null;
         const list = index.get(e.item.ex) || index.set(e.item.ex, []).get(e.item.ex);
         list.push({
-          pid, dayId, index: index0, t, sets,
+          pid, dayId, index: index0, t, loggedAt, at: loggedAt || t, sets,
           total: e.sets, doneCount, wu: e.wu, wsTotal: e.sets - e.wu, wsDone,
           defReps: e.sch.reps ?? null,
           alt: exRec.alt || null, mode: exRec.mode || 'band',
@@ -126,7 +130,7 @@ function buildHistoryIndex() {
       }
     }
   }
-  for (const list of index.values()) list.sort((a, b) => a.t - b.t);
+  for (const list of index.values()) list.sort((a, b) => a.at - b.at);
   return index;
 }
 
@@ -145,11 +149,18 @@ export const dayTime = (pid, dayId) => {
   return dateForIndex(i, pid)?.getTime() ?? i * DAY_MS;
 };
 
-export function lastSessionFor(exId, beforeT, mode) {
+// The most recent session of this exercise ANYWHERE — any program — excluding
+// the day you are currently looking at. Progression follows the exercise, not
+// the program, and a mis-anchored program can never hide your history.
+//   ctx: { pid, dayId } of the day being viewed, or a legacy timestamp number.
+export function lastSessionFor(exId, ctx, mode) {
   const list = historyFor(exId);
+  const cur = typeof ctx === 'object' && ctx ? ctx : null;
+  const beforeT = typeof ctx === 'number' ? ctx : null;
   for (let i = list.length - 1; i >= 0; i--) {
     const r = list[i];
-    if (r.t >= beforeT) continue;
+    if (cur && r.pid === cur.pid && r.dayId === cur.dayId) continue;   // this day
+    if (beforeT != null && r.at >= beforeT) continue;
     if (mode && r.mode !== mode) continue;
     return r;
   }
@@ -166,8 +177,8 @@ export function bestWeight(list) {
 
 // Program rule: add weight once every WORKING set was completed cleanly.
 // Warm-up sets are ignored; a partial session never triggers the hint.
-export function overloadHint(exId, beforeT, mode) {
-  const last = lastSessionFor(exId, beforeT, mode);
+export function overloadHint(exId, ctx, mode) {
+  const last = lastSessionFor(exId, ctx, mode);
   if (!last || last.wsTotal <= 0) return null;
   if (last.wsDone < last.wsTotal) return null;
   const wsLogged = last.sets.filter((s) => s.i >= last.wu && s.done && s.weight != null);
@@ -238,6 +249,9 @@ const dayRec = (s, pid, dayId) => {
   const p = s.programs[pid];
   return p.days[dayId] || (p.days[dayId] = { status: null, ex: {} });
 };
+// The moment you log real work on a back-filled "assumed done" day, it stops
+// being an assumption — otherwise the history index would keep ignoring it.
+const clearAssumed = (d) => { if (d.auto) delete d.auto; };
 const exRec = (d, key) => d.ex[key] || (d.ex[key] = { sets: [] });
 
 function maybeCompleteDay(s, pid, dayId) {
@@ -262,13 +276,15 @@ export function toggleSet(pid, dayId, entry, setIdx, extras = {}) {
   let justCompleted = false;
   store.update((s) => {
     const d = dayRec(s, pid, dayId);
+    clearAssumed(d);
     const ex = exRec(d, entry.key);
     const cur = ex.sets[setIdx];
     if (cur?.done) {
       ex.sets[setIdx] = { ...cur, done: false };
       if (d.status === 'done') { d.status = null; delete d.finishedAt; }
     } else {
-      ex.sets[setIdx] = { ...(cur || {}), done: true, ...extras };
+      ex.sets[setIdx] = { ...(cur || {}), done: true, ...extras, loggedAt: Date.now() };
+      d.lastLoggedAt = Date.now();
       justCompleted = maybeCompleteDay(s, pid, dayId);
     }
   });
@@ -277,7 +293,9 @@ export function toggleSet(pid, dayId, entry, setIdx, extras = {}) {
 
 export function setLog(pid, dayId, entry, setIdx, { weight, reps }) {
   store.update((s) => {
-    const ex = exRec(dayRec(s, pid, dayId), entry.key);
+    const d = dayRec(s, pid, dayId);
+    clearAssumed(d);
+    const ex = exRec(d, entry.key);
     ex.sets[setIdx] = { ...(ex.sets[setIdx] || {}), weight, reps };
   });
 }
@@ -286,11 +304,13 @@ export function completeSection(pid, dayId, entries) {
   let just = false;
   store.update((s) => {
     const d = dayRec(s, pid, dayId);
+    clearAssumed(d);
     for (const e of entries) {
       if (e.item.opt || e.skipped) continue;
       const ex = exRec(d, e.key);
-      for (let i = 0; i < e.sets; i++) ex.sets[i] = { ...(ex.sets[i] || {}), done: true };
+      for (let i = 0; i < e.sets; i++) ex.sets[i] = { ...(ex.sets[i] || {}), done: true, loggedAt: Date.now() };
     }
+    d.lastLoggedAt = Date.now();
     just = maybeCompleteDay(s, pid, dayId);
   });
   return just;
@@ -312,7 +332,11 @@ export function setNote(pid, dayId, note) {
 }
 
 export function setExerciseField(pid, dayId, key, patch) {
-  store.update((s) => { Object.assign(exRec(dayRec(s, pid, dayId), key), patch); });
+  store.update((s) => {
+    const d = dayRec(s, pid, dayId);
+    clearAssumed(d);
+    Object.assign(exRec(d, key), patch);
+  });
 }
 
 export function seedBefore(pid, index) {
@@ -436,6 +460,15 @@ export function moveExercise(pid, dayId, si, ii, dir) {
     (plan2.exOrder || (plan2.exOrder = {}))[si] = order;
   });
   return true;
+}
+
+// Commit a whole new item order for one section (used by drag-to-reorder).
+export function setExerciseOrder(pid, dayId, si, order) {
+  store.update((s) => {
+    const d = dayRec(s, pid, dayId);
+    const plan = d.plan || (d.plan = {});
+    (plan.exOrder || (plan.exOrder = {}))[si] = order;
+  });
 }
 
 export function resetDayPlan(pid, dayId) {

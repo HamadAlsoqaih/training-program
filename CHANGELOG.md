@@ -4,6 +4,49 @@ Every version of this app, from the first build to today. Newest first.
 
 ---
 
+## v6 — Real dates, future starts, cross-program progression
+
+**The date bug (and what caused it)**
+- The start flow used to **silently rewrite the date you typed**: picking a
+  program day snapped the date to the *nearest* matching weekday and was allowed
+  to snap **backwards**. Entering 16 Sep and picking a Day 1 that falls on a
+  Monday rewrote the anchor to Monday 7 Sep — a date you never chose. It now
+  only ever moves forward, and never touches a date you typed yourself.
+- The start screen spells out the result plainly: *"Starts Wed 16 Sep — in 6
+  days. That date is Week 1 · Day 1"*, and warns if the date's weekday doesn't
+  match the day you picked.
+- **Out-of-range dates are no longer silently clamped.** `programStatus()` now
+  reports `before` / `active` / `over`, and a day is only labelled TODAY when it
+  genuinely is. (`isBeforeStart` / `isProgramOver` existed but were never called.)
+- **Future start = countdown, then auto-start.** Today shows "Starts Wed 16 Sep —
+  in 6 days" with a Day-1 preview, a one-tap **Start today instead**, and a way
+  to switch to your other program. On the start date it just becomes Day 1.
+  A finished program gets an equivalent "program complete" screen.
+- The real current date is now always shown in the day header.
+
+**Progression follows the exercise, not the program**
+- Sets are stamped with a real `loggedAt` time, so history is ordered by when
+  you actually trained rather than by a program's calendar maths.
+- "Last session" now means *the most recent session of that exercise anywhere*,
+  excluding the day you're looking at — so a mis-anchored program can never hide
+  your history again. Prefill, the last-session line, the "add weight" hint and
+  PR detection all use it.
+- The last-session line names the source when it came from your other program:
+  `↺ last: 95 kg × 6 · 15-Week`.
+- **Fixed:** logging real work on a back-filled "assumed done" day left it
+  flagged as assumed, so the history index ignored it entirely. Any set you log
+  now makes that day real data.
+
+**Reordering and skipping**
+- **Hold a card and drag it**, like any phone app — the card lifts, the others
+  slide apart, and releasing drops it there. Works any time, not just in
+  organize mode. Supersets move as one unit so a pair never gets split. Holding
+  a set tick, input or stepper never starts a drag, and a tap is still a tap.
+- **Skip a single exercise straight from its card** (⤼ icon) — no need to enter
+  organize mode. Tap again to bring it back.
+
+---
+
 ## v5 — Multi-program, in-app video, editable days, theme colour
 
 Renamed **15-Week Training Program → Hamad's Training**: the app is no longer one

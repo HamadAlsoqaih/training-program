@@ -13,10 +13,10 @@
 // ============================================================================
 import { h, svgRing } from './util.js';
 import * as store from './state.js';
-import { todayId } from './schedule.js';
+import { todayId, programStatus } from './schedule.js';
 import { DEFAULT_PROGRAM, PROGRAMS } from './program.js';
 import { onCountdown, extendCountdown, skipCountdown, fmtMs, acquireWakeLock } from './timers.js';
-import { renderDay } from './views/day.js';
+import { renderDay, renderProgramGate } from './views/day.js';
 import { renderPrograms, renderProgram, renderPhase, renderWeek } from './views/programview.js';
 import { renderProgress } from './views/progress.js';
 import { renderSettings, renderStart } from './views/settings.js';
@@ -85,8 +85,16 @@ function render(opts = {}) {
     case 'settings':
       el = renderSettings(rerender); tab = 'settings'; break;
     case 'today':
-    default:
-      el = renderDay(store.activePid(), todayId(), rerender); tab = 'today'; break;
+    default: {
+      // If the active program hasn't started yet (or has finished), show that
+      // instead of pretending the nearest day is today.
+      const pid = store.activePid();
+      const status = programStatus(pid);
+      el = status.state === 'active'
+        ? renderDay(pid, todayId(), rerender)
+        : renderProgramGate(pid, status, rerender);
+      tab = 'today'; break;
+    }
   }
 
   view().replaceChildren(el);

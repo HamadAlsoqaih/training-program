@@ -22,6 +22,8 @@ jobs:
           node-version: 22
       - name: Program data fidelity checks
         run: node tests/fidelity.mjs
+      - name: Schedule checks
+        run: node tests/schedule.mjs
 
   deploy:
     needs: test

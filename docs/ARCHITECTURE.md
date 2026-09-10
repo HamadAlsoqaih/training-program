@@ -87,6 +87,12 @@ A v1 save (single program) migrates automatically into `programs.p15` on load.
 
 ## Key rules
 
+**Out-of-range dates are explicit, never clamped.** `todayIndex()` clamps so
+browsing always lands on a real day, but a clamped index is *not* today. Any
+code that calls a day "today" must first check `programStatus(pid)`, which
+returns `before` (with `daysUntil`), `active`, or `over`. Silently clamping a
+future anchor to Day 1 is what once made the app display the wrong date.
+
 **The displayed day is pinned to the real weekday.** `setup.dayMap` maps program
 day 1–7 → weekday 0–6. Today's slot is looked up from today's actual weekday; the
 anchor only decides which *week*. A rollover hour (default 4 AM) keeps 1 AM
@@ -107,6 +113,13 @@ that day-slot across the phase's weeks, skipping days already completed.
 are; a day when every required (non-optional, non-skipped) exercise is; a week
 when all seven days are closed. Partial work stays partial — one ticked set counts
 as exactly one set in every statistic.
+
+**Progression is per exercise, across every program.** Ticking a set stamps
+`loggedAt`, and the history index orders records by that real time (falling back
+to the day's calendar date). `lastSessionFor(exId, {pid, dayId})` returns the
+most recent session of that exercise *anywhere*, excluding the day being viewed —
+so weights carry between programs and a bad anchor cannot hide history. Logging
+on a back-filled ("assumed done") day clears that flag so the work counts.
 
 **Progressive overload.** The "add weight" hint fires only when the last session
 had *all working sets* done and weight-logged. Warm-ups are excluded.

@@ -12,6 +12,7 @@ import { seedBefore } from '../completion.js';
 import { PROGRAM_LIST, getProgram, daySlotsFor } from '../program.js';
 import {
   idToIndex, toISO, DEFAULT_DAY_MAP, WEEKDAY_NAMES, dayMap, todayIndex, currentWeek,
+  fmtDate, realToday,
 } from '../schedule.js';
 import { whereAmISheet } from './sheets.js';
 
@@ -80,6 +81,7 @@ export function renderStart(pid, onDone) {
   const seedTgl = h('input', { type: 'checkbox' });
   const preview = h('div', { class: 'banner', style: 'margin-top:12px' });
   let mapper;
+  let dateTouched = false;   // once you type a date, nothing may overwrite it
 
   const rebuildDays = () => {
     const m = mapper.getMap();
@@ -91,18 +93,36 @@ export function renderStart(pid, onDone) {
     const [y, mo, d] = (dateIn.value || toISO(today)).split('-').map(Number);
     daySel.value = progOfWeekdayIn(mapper.getMap(), new Date(y, mo - 1, d, 12).getDay());
   };
+  // If you picked the day, move the date FORWARD to the next matching weekday —
+  // never backwards, and never past a date you typed yourself. (Snapping
+  // backwards is what used to silently rewrite a chosen start date into the
+  // past and made the app think the wrong day was "today".)
   const syncDateFromDay = () => {
+    if (dateTouched) return;                       // your date wins, always
     const target = mapper.getMap()[+daySel.value];
     const [y, mo, d] = (dateIn.value || toISO(today)).split('-').map(Number);
     const cur = new Date(y, mo - 1, d, 12);
-    let shift = (target - cur.getDay() + 7) % 7;
-    if (shift > 3) shift -= 7;
+    const shift = (target - cur.getDay() + 7) % 7; // forward only
     dateIn.value = toISO(new Date(cur.getTime() + shift * 86400000));
   };
+
   const updatePreview = () => {
     week = +weekSel.value;
     const dayN = +daySel.value;
-    preview.innerHTML = `<b>${dateIn.value}</b> ↔ <b>Week ${week} · Day ${dayN} (${WEEKDAY_NAMES[mapper.getMap()[dayN]]})</b> — ${daySlotsFor(pid)[dayN - 1]}.`
+    const [y, mo, d] = (dateIn.value || toISO(today)).split('-').map(Number);
+    const chosen = new Date(y, mo - 1, d, 12);
+    const now = realToday(pid);
+    const diff = Math.round((chosen - now) / 86400000);
+    const wdOk = chosen.getDay() === mapper.getMap()[dayN];
+
+    let when;
+    if (diff > 0) when = `Starts <b>${fmtDate(chosen)}</b> — in ${diff} day${diff === 1 ? '' : 's'}.`;
+    else if (diff === 0) when = `Starts <b>today</b> (${fmtDate(chosen)}).`;
+    else when = `Anchored to <b>${fmtDate(chosen)}</b>, ${-diff} day${diff === -1 ? '' : 's'} ago — today lands later in the program.`;
+
+    preview.innerHTML =
+      `${when}<br>That date is <b>Week ${week} · Day ${dayN} (${WEEKDAY_NAMES[mapper.getMap()[dayN]]})</b> — ${daySlotsFor(pid)[dayN - 1]}.`
+      + (wdOk ? '' : `<br><b>Heads up:</b> ${fmtDate(chosen)} is a ${WEEKDAY_NAMES[chosen.getDay()]}, but Day ${dayN} is your ${WEEKDAY_NAMES[mapper.getMap()[dayN]]}. Pick the matching day or change the date.`)
       + (seedTgl.checked && (week > 1 || dayN > 1) ? '<br>Everything before it will be marked <b>done (assumed)</b>.' : '');
   };
 
@@ -111,7 +131,7 @@ export function renderStart(pid, onDone) {
   rebuildDays(); syncDayFromDate();
   weekSel.addEventListener('change', updatePreview);
   daySel.addEventListener('change', () => { syncDateFromDay(); updatePreview(); });
-  dateIn.addEventListener('change', () => { syncDayFromDate(); updatePreview(); });
+  dateIn.addEventListener('change', () => { dateTouched = true; syncDayFromDate(); updatePreview(); });
   seedTgl.addEventListener('change', updatePreview);
   updatePreview();
 
@@ -133,6 +153,8 @@ export function renderStart(pid, onDone) {
       h('div', { class: 'small dim', style: 'margin-bottom:10px' },
         'Fresh start = Week 1 · Day 1. Already mid-program? Pick your current day and turn on the switch to mark everything before it as done.'),
       h('div', { class: 'row', style: 'margin-bottom:8px' }, weekSel, daySel),
+      h('div', { class: 'tiny faint', style: 'margin-bottom:4px' },
+        'The real date that day falls on (a future date is fine — the app will count down to it):'),
       dateIn,
       h('label', { class: 'row', style: 'margin-top:12px;gap:10px' },
         h('span', { class: 'switch' }, seedTgl, h('span', { class: 'knob' })),

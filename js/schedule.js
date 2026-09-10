@@ -79,10 +79,38 @@ export function todayIndexRaw(now = new Date(), pid = activePid()) {
   const week = Math.floor(anchorIdx / 7) + weeksElapsed + 1;
   return (week - 1) * 7 + (progOfWeekdayIn(mapForWeek(week, pid), eff.getDay()) - 1);
 }
+// todayIndex is CLAMPED so browsing always lands on a real day. Anything that
+// calls a day "today" must check programStatus() first — a clamped index is not
+// today, it is just the nearest day that exists.
 export const todayIndex = (now, pid = activePid()) => clampIndex(todayIndexRaw(now, pid), pid);
 export const todayId = (now, pid = activePid()) => indexToId(todayIndex(now, pid));
 export const isProgramOver = (now, pid = activePid()) => todayIndexRaw(now, pid) >= totalDays(pid);
 export const isBeforeStart = (now, pid = activePid()) => todayIndexRaw(now, pid) < 0;
+
+// Where the real calendar sits relative to this program.
+//   before → the program starts in the future (countdown)
+//   active → today maps onto a real program day
+//   over   → the program's last day has passed
+export function programStatus(pid = activePid(), now = new Date()) {
+  const raw = todayIndexRaw(now, pid);
+  const n = totalDays(pid);
+  const startDate = dateForIndex(0, pid);
+  const endDate = dateForIndex(n - 1, pid);
+  const eff = effectiveDate(now, pid);
+  const dayDiff = (a, b) => Math.round((a - b) / DAY_MS);
+  if (raw < 0) {
+    return { state: 'before', rawIndex: raw, startDate, endDate,
+      daysUntil: startDate ? Math.max(1, dayDiff(startDate, eff)) : 1 };
+  }
+  if (raw >= n) {
+    return { state: 'over', rawIndex: raw, startDate, endDate,
+      daysOver: endDate ? Math.max(1, dayDiff(eff, endDate)) : 1 };
+  }
+  return { state: 'active', rawIndex: raw, startDate, endDate };
+}
+
+// The real calendar date right now (respecting the rollover hour).
+export const realToday = (pid = activePid(), now = new Date()) => effectiveDate(now, pid);
 export const currentWeek = (pid = activePid()) =>
   Math.min(totalWeeks(pid), Math.floor(todayIndex(undefined, pid) / 7) + 1);
 

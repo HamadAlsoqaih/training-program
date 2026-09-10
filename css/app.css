@@ -555,3 +555,21 @@ select.sel:focus, input.txt:focus { outline: none; border-color: var(--accent); 
   background: rgba(5,7,12,.9);
 }
 body.video-open { overflow: hidden; }
+
+
+/* ---- hold-to-drag reordering ---- */
+.sec-list { position: relative; }
+.sec-list.sorting { content-visibility: visible; }
+.sec-list.sorting > * { content-visibility: visible; }
+.sec-list.sorting .ex { transition: transform .16s ease; }
+.drag-lift {
+  position: relative;
+  transition: none !important;
+  box-shadow: 0 14px 30px rgba(0,0,0,.5);
+  touch-action: none;
+}
+.drag-lift, .drag-lift .ex {
+  border-color: var(--accent) !important;
+}
+.drag-lift .ex, .drag-lift.ex { transform: scale(1.02); }
+.ytlink.on { color: var(--bad); border-color: rgba(248,113,113,.4); background: var(--bad-dim); }

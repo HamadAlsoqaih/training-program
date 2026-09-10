@@ -14,7 +14,7 @@ offline at the gym.
 | Program | Length | What it is |
 |---|---|---|
 | **15-Week Program** | 15 weeks · 4 phases | Volleyball strength, plyometrics & shoulder rehab |
-| **12-Week Vert Code** | 12 weeks · 4 phases | PJF Vert Code (bodyweight) on the same weekly template |
+| **12-Week Vert Code** | 12 weeks · 4 phases | another program on the same weekly template |
 
 Each program keeps its own schedule and progress; the Today tab follows whichever
 one is active. Logged weights are shared, so your numbers carry across.

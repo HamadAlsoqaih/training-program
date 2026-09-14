@@ -11,8 +11,9 @@
 //   programs: {
 //     p15: {
 //       started, startedAt,
-//       setup:   { anchorDate, anchorDay, rolloverHour, dayMap, weekSwaps },
-//       days:    { "w3d6": DayRecord },
+//       setup:   { anchorDate, anchorDay, rolloverHour, dayMap, weekSwaps,
+//                  deloads: [ { id, week, at, d0, startedAt } ] },
+//       days:    { "w3d6": DayRecord, "k1d3": DayRecord (inserted deload) },
 //       fatigue: [ { week, rating, at } ],
 //     },
 //     p12: { ... },
@@ -31,14 +32,14 @@
 //   note, skipReason, cardioDone, startedAt, elapsedMs, contacts
 // }
 // ============================================================================
-import { PROGRAM_LIST, DEFAULT_PROGRAM } from './program.js';
+import { PROGRAM_LIST, DEFAULT_PROGRAM } from './registry.js';
 
 const KEY = 't15.state.v1'; // key kept stable so existing installs migrate in place
 
 const emptyProgram = () => ({
   started: false,
   startedAt: null,
-  setup: { anchorDate: null, anchorDay: 'w1d1', rolloverHour: 4, dayMap: null, weekSwaps: {} },
+  setup: { anchorDate: null, anchorDay: 'w1d1', rolloverHour: 4, dayMap: null, weekSwaps: {}, deloads: [] },
   days: {},
   fatigue: [],
 });

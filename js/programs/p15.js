@@ -2,7 +2,7 @@
 // p15.js — "15-Week Program" (volleyball strength & plyometrics).
 // The original program. Encoded exactly from the source tables.
 // ============================================================================
-import { sr, time, wuws, it, capSets } from '../schemes.js';
+import { sr, time, wuws, it, capSets, deloadSections } from '../schemes.js';
 
 // --- shared building blocks (consistent across all 15 weeks) ---------------
 const SHOULDER_WARMUP = () => [
@@ -215,7 +215,6 @@ const p4Core = (week) => {
 };
 
 // --- resolvers -------------------------------------------------------------
-const deloadSections = (sections) => sections.map((s) => (s.tag === 'cardio' ? s : capSets(s, 1)));
 
 function plyoFor(week, dayNum) {
   if (week <= 4) { const s = p1Plyo(); return week <= 2 ? capSets(s, week) : s; }

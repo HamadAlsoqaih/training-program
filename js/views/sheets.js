@@ -15,11 +15,11 @@ import {
 import * as store from '../state.js';
 import {
   historyFor, bestWeight, setNote, markDay, seedBefore, patchPlan, dayIdsForScope,
-  isLiveDay,
+  isLiveDay, dayProgress, insertDeload, deloadPlanFor,
 } from '../completion.js';
 import {
   dateForId, fmtDate, weekdayName, progOfWeekday, toISO, idToIndex, todayIndex,
-  WEEKDAY_NAMES, weekSwaps, currentWeek,
+  WEEKDAY_NAMES, weekSwaps, currentWeek, todaySlot, todayId, deloadDayId,
 } from '../schedule.js';
 import { fmtMs } from '../timers.js';
 import { lineChart } from '../charts.js';
@@ -383,5 +383,95 @@ export function programNotesSheet(pid) {
         h('div', { class: 'small dim' }, v)))),
     h('div', { class: 'h2', style: 'margin:14px 0 10px' }, 'Program notes'),
     ...notesFor(pid).map((n) => h('div', { class: 'card small dim', style: 'padding:10px 12px' }, n)),
+  );
+}
+
+// --- this week at a glance ---------------------------------------------------
+// The seven days of the slot you are in — the program week, or the inserted
+// deload block if one is running. Each line is the session itself; tap to open.
+export function weekOverviewSheet(pid, rerender) {
+  const slot = todaySlot(pid);
+  const block = slot.deload?.block || null;
+  const week = block ? block.week : currentWeek(pid);
+  const todayIdNow = todayId(undefined, pid);
+
+  const ids = [];
+  for (let d = 1; d <= 7; d++) ids.push(block ? deloadDayId(block.id, d) : `w${week}d${d}`);
+
+  const rows = ids.map((id, i) => {
+    const day = getDay(pid, id);
+    if (!day) return null;
+    const d = i + 1;
+    const p = dayProgress(pid, id);
+    const isToday = id === todayIdNow;
+    const date = dateForId(id, pid);
+    const cardio = day.sections.some((sec) => sec.tag === 'cardio');
+    const summary = cardio && !/cardio/i.test(day.title) ? `${day.title} · Cardio` : day.title;
+
+    let statEl;
+    if (p.status === 'done') statEl = h('div', { class: 'dstat done' }, '✓');
+    else if (p.status === 'skipped') statEl = h('div', { class: 'dstat skip' }, '✗');
+    else if (p.pct > 0) statEl = h('div', { class: 'dstat part' }, `${Math.round(p.pct * 100)}`);
+    else statEl = h('div', { class: 'dstat' }, String(d));
+
+    return h('button', {
+      class: `daycard${isToday ? ' today' : ''}${p.status === 'done' ? ' done' : ''}`,
+      onclick: () => { closeSheet(); location.hash = `#/day/${pid}/${id}`; rerender?.(); },
+    },
+      statEl,
+      h('div', { class: 'grow' },
+        h('div', { style: 'font-weight:700;font-size:15px' },
+          `${weekdayName(d, block ? null : week, pid)}`,
+          isToday ? h('span', { class: 'chip accent', style: 'margin-left:7px' }, 'today') : null,
+          block && day.light ? h('span', { class: 'chip deload-chip', style: 'margin-left:7px' }, 'deload') : null),
+        h('div', { class: 'small dim' }, summary),
+        date ? h('div', { class: 'tiny faint' }, fmtDate(date)) : null),
+      h('div', { class: 'faint' }, '›'),
+    );
+  }).filter(Boolean);
+
+  openSheet(
+    h('div', { class: 'h2', style: 'margin-bottom:2px' }, block ? 'Deload week' : `Week ${week}`),
+    h('div', { class: 'tiny faint', style: 'margin-bottom:12px' },
+      block ? `Then Week ${block.week} starts again from Day 1` : getProgram(pid).name),
+    ...rows,
+  );
+}
+
+// --- insert a deload week ----------------------------------------------------
+export function deloadSheet(pid, rerender) {
+  const plan = deloadPlanFor(pid);
+  if (!plan) { toast('No week left to deload'); return; }
+  const first = dateForId(`w${plan.week}d${plan.d0}`, pid);
+  const moved = [];
+  for (let d = 1; d < plan.d0; d++) if (store.day(`w${plan.week}d${d}`, pid)) moved.push(d);
+
+  openSheet(
+    h('div', { class: 'h2', style: 'margin-bottom:2px' }, '🌙 Insert a deload week'),
+    h('div', { class: 'small dim', style: 'margin-bottom:12px' },
+      `Starting today, ${plan.deloadDays} day${plan.deloadDays > 1 ? 's' : ''} to the end of this week.`),
+    h('div', { class: 'card', style: 'padding:12px' },
+      h('div', { class: 'small' }, 'Every exercise drops to one set, weights around 60% of your last. Cardio carries on as normal.'),
+      h('div', { class: 'small', style: 'margin-top:8px' },
+        `Then Week ${plan.week} starts again from Day 1 at full volume — nothing is skipped or renumbered, `
+        + 'and every later day moves a week later.'),
+      first ? h('div', { class: 'tiny faint', style: 'margin-top:8px' },
+        `Week ${plan.week} Day ${plan.d0} moves from ${fmtDate(first)} to ${fmtDate(new Date(first.getTime() + 7 * 86400000))}.`) : null,
+      moved.length ? h('div', { class: 'tiny faint', style: 'margin-top:8px' },
+        `The ${moved.length} day${moved.length > 1 ? 's' : ''} you already trained this week move into the deload week, `
+        + 'with everything you logged, so the replay starts clean.') : null,
+    ),
+    h('button', {
+      class: 'btn primary block', style: 'margin-top:12px',
+      onclick: () => {
+        const b = insertDeload(pid);
+        closeSheet();
+        if (!b) { toast('Could not insert a deload'); return; }
+        toast('Deload week inserted');
+        location.hash = '#/today';
+        rerender?.();
+      },
+    }, `Insert ${plan.deloadDays} deload day${plan.deloadDays > 1 ? 's' : ''}`),
+    h('button', { class: 'btn block', style: 'margin-top:8px', onclick: closeSheet }, 'Cancel'),
   );
 }

@@ -5,7 +5,7 @@ from their source tables, with progress tracking, timers, weight logging,
 in-app exercise videos and a progress dashboard.
 No backend, no login — everything lives on your phone.
 
-**Open it:** https://hamadalsoqaih.github.io/training/
+**Open it:** https://hamadalsoqaih.github.io/training-program/
 In Safari: **Share → Add to Home Screen** for a full-screen app that works
 offline at the gym.
 
@@ -32,6 +32,11 @@ one is active. Logged weights are shared, so your numbers carry across.
   partial.
 - **Hold a card and drag** to reorder, like any phone app (supersets move as one
   unit). **Skip a single exercise** straight from its card.
+- **📅 This week** shows all seven days at a glance — one line each, tap to open.
+- **Insert a deload week** at any point: it starts today, runs to the end of the
+  week, mirrors the same sessions at one set and ~60% weight, then the week
+  replays in full. Nothing renumbers, and a banner suggests one when you've gone
+  4–6 weeks without.
 - **Organize day** adds: move whole sections, edit reps/duration/rest, add or
   delete sets. Edits during a workout apply to that day only, silently; editing a
   day you're browsing asks whether to apply it to the whole phase.
@@ -80,6 +85,7 @@ python3 -m http.server 8080   # open http://localhost:8080
 node tests/fidelity.mjs       # verify both programs against their source tables
 node tests/schedule.mjs       # anchors, future starts, finished programs
 node tests/analytics.mjs      # jump volume bucketing and the spike warning
+node tests/deload.mjs         # inserted deload weeks, and the boundary cases
 node scripts/gen-icons.mjs    # regenerate icons (generated, not committed)
 ```
 

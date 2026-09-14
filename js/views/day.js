@@ -21,10 +21,13 @@ import {
   toggleSet, setLog, markDay, setNote, completeSection, setExerciseField,
   toggleSkipExercise, deleteSet, addSet, moveExercise, moveSection,
   hasCustomPlan, resetDayPlan, setExerciseOrder,
+  insertDeload, removeDeload, deloadPlanFor,
 } from '../completion.js';
 import {
   idToIndex, indexToId, clampIndex, todayId, todayIndex, dateForId, fmtDate,
   weekdayName, isSwapped, programStatus, realToday, toISO,
+  todaySlot, isDeloadId, deloadIdParts, deloadBlock, deloadLength, deloadDayId,
+  calIndexOfDayId, dayIdAtCal, lastCalIndex, currentWeek,
 } from '../schedule.js';
 import {
   startSession, pauseSession, resumeSession, finishSession, sessionElapsedMs,
@@ -32,8 +35,9 @@ import {
 } from '../timers.js';
 import {
   historySheet, noteSheet, skipSheet, summarySheet, durationSheet, textSheet,
-  whereAmISheet, editExerciseSheet,
+  whereAmISheet, editExerciseSheet, deloadSheet, weekOverviewSheet,
 } from './sheets.js';
+import { deloadAdvice } from '../analytics.js';
 import { openVideo } from '../video.js';
 import { makeSortable } from '../dragsort.js';
 
@@ -53,15 +57,20 @@ export function renderDay(pid, dayId, rerender) {
   const s = store.get();
   const rec = store.day(dayId, pid) || {};
   const prog = dayProgress(pid, dayId);
-  const index = idToIndex(dayId);
   const isActive = pid === store.activePid();
   const status = programStatus(pid);
   // A clamped index is NOT today — only an active program can have a today.
   const isToday = isActive && status.state === 'active' && dayId === todayId();
-  const week = getWeek(pid, day.week);
+  // An inserted deload day borrows the week it is deloading for phase colour
+  // and navigation; it has no program index of its own.
+  const dl = deloadIdParts(dayId);
+  const block = dl ? deloadBlock(dl.block, pid) : null;
+  const srcWeek = day.week ?? block?.week ?? 1;
+  const index = dl ? (block?.at ?? 0) : idToIndex(dayId);
+  const week = getWeek(pid, srcWeek);
   const sessionActive = s.session?.dayId === dayId && s.session?.pid === pid;
   const date = isActive ? dateForId(dayId, pid) : null;
-  const dayCtx = { pid, dayId };
+  const dayCtx = { pid, dayId, deload: !!day.light };
 
   clearInterval(timerInterval);
   // organize mode never leaks from one day to another
@@ -74,30 +83,37 @@ export function renderDay(pid, dayId, rerender) {
   container.append(h('div', { class: 'dayhead' },
     h('div', { class: 'nav' },
       h('button', {
-        class: 'navbtn', disabled: index === 0,
-        onclick: () => { location.hash = `#/day/${pid}/${indexToId(clampIndex(index - 1, pid))}`; },
+        class: 'navbtn', disabled: !dl && index === 0,
+        onclick: () => { location.hash = `#/day/${pid}/${stepDay(pid, dayId, -1)}`; },
       }, '‹'),
       h('div', { class: 'center grow' },
-        h('a', { class: 'h1', style: 'display:block', href: `#/week/${pid}/${day.week}` },
-          `Week ${day.week} · ${weekdayName(day.d, day.week, pid)}`),
+        h('a', { class: 'h1', style: 'display:block', href: `#/week/${pid}/${srcWeek}` },
+          dl ? `Deload · ${weekdayName(dl.d, null, pid)}`
+             : `Week ${day.week} · ${weekdayName(day.d, day.week, pid)}`),
         h('div', { class: 'row', style: 'justify-content:center;gap:6px;margin-top:4px;flex-wrap:wrap' },
           h('span', { class: 'chip', style: `color:${week.phase.color};border-color:${week.phase.color}44` },
             week.phase.name),
+          dl ? h('span', { class: 'chip deload-chip' }, day.light ? 'DELOAD' : `before the deload · Week ${block.week}`) : null,
           date ? h('span', { class: 'chip' }, fmtDate(date)) : null,
           isToday ? h('span', { class: 'chip accent' }, 'TODAY') : null,
           prog.status === 'done' ? h('span', { class: 'chip good' }, rec.auto ? '✓ done (assumed)' : '✓ done') : null,
           prog.status === 'skipped' ? h('span', { class: 'chip bad' }, 'skipped') : null,
-          isSwapped(day.week, day.d, pid) ? h('span', { class: 'chip info' }, '⇄ swapped') : null,
+          !dl && isSwapped(day.week, day.d, pid) ? h('span', { class: 'chip info' }, '⇄ swapped') : null,
           hasCustomPlan(pid, dayId) ? h('span', { class: 'chip info' }, '✎ edited') : null,
         ),
-        isToday ? h('button', {
-          class: 'tiny faint', style: 'margin-top:4px;text-decoration:underline',
-          onclick: () => whereAmISheet(pid, rerender),
-        }, 'wrong week? fix it') : null,
+        isToday ? h('div', { class: 'row', style: 'justify-content:center;gap:10px;margin-top:6px' },
+          h('button', {
+            class: 'chip', onclick: () => weekOverviewSheet(pid, rerender),
+          }, '📅 This week'),
+          h('button', {
+            class: 'tiny faint', style: 'text-decoration:underline',
+            onclick: () => whereAmISheet(pid, rerender),
+          }, 'wrong week? fix it'),
+        ) : null,
       ),
       h('button', {
-        class: 'navbtn', disabled: index === totalDays(pid) - 1,
-        onclick: () => { location.hash = `#/day/${pid}/${indexToId(clampIndex(index + 1, pid))}`; },
+        class: 'navbtn', disabled: !dl && index === totalDays(pid) - 1,
+        onclick: () => { location.hash = `#/day/${pid}/${stepDay(pid, dayId, 1)}`; },
       }, '›'),
     ),
     h('div', { class: 'center dim small', style: 'font-weight:600' }, day.title),
@@ -109,10 +125,20 @@ export function renderDay(pid, dayId, rerender) {
       h('a', { class: 'chip info', href: '#/today' }, '↩ jump to today')) : null,
   ));
 
-  if (week.badge) {
-    container.append(h('div', { class: `banner ${week.badge.startsWith('DELOAD') || week.badge.includes('DELOAD') ? 'deload' : ''}` }, week.badge));
+  if (dl && day.light) {
+    container.append(h('div', { class: 'banner deload' },
+      h('div', { style: 'font-weight:700;margin-bottom:4px' }, '🌙 Deload week'),
+      `Same sessions, one set each, and weights around 60% of your last. `
+      + `${deloadLength(block)} day${deloadLength(block) > 1 ? 's' : ''} of it, then Week ${block.week} `
+      + 'starts again from Day 1 at full volume. Cardio carries on as normal.'));
+  } else if (week.badge && !dl) {
+    container.append(h('div', { class: `banner ${week.badge.includes('DELOAD') ? 'deload' : ''}` }, week.badge));
   }
   if (isToday && status.state === 'active') {
+    const advice = deloadAdviceBanner(pid, rerender);
+    if (advice) container.append(advice);
+  }
+  if (isToday && status.state === 'active' && !dl) {
     const behind = todayIndex() - firstOpenIndex(pid);
     if (behind > 0) {
       container.append(h('div', { class: 'banner behind' },
@@ -563,9 +589,12 @@ function setRow(ctx, entry, i, last, repsBased) {
       : tick;
   }
 
+  // On a deload day the prescription is "about 60% of last time" — prefill that
+  // rather than last week's working weight, so going light is the default.
+  const suggested = ctx.deload ? deloadWeight(prevSet?.weight ?? null) : (prevSet?.weight ?? null);
   wIn = h('input', {
-    type: 'number', inputmode: 'decimal', step: 'any', placeholder: 'kg',
-    value: st?.weight ?? prevSet?.weight ?? '',
+    type: 'number', inputmode: 'decimal', step: 'any', placeholder: ctx.deload ? 'kg (light)' : 'kg',
+    value: st?.weight ?? suggested ?? '',
     onchange: saveLog,
   });
   rIn = h('input', {
@@ -757,6 +786,44 @@ function maybeBackupNudge(pid, week) {
   });
 }
 
+// "Time to back off" — shown on Today only, dismissible for the week.
+function deloadAdviceBanner(pid, rerender) {
+  const s = store.get();
+  const advice = deloadAdvice(pid);
+  const week = currentWeek(pid);
+  if (!advice.show) return null;
+  if ((s.settings.deloadDismissed || {})[pid] >= week) return null;
+  if (!deloadPlanFor(pid)) return null;
+
+  return h('div', { class: 'banner deload' },
+    h('div', { style: 'font-weight:700;margin-bottom:4px' }, '🌙 Time for a deload?'),
+    `${advice.weeks} weeks of training since your last one, and ${advice.reason}. `
+    + 'A light week now keeps the next block productive.',
+    h('div', { class: 'row', style: 'gap:8px;margin-top:10px' },
+      h('button', { class: 'btn sm', onclick: () => deloadSheet(pid, rerender) }, 'Insert deload week'),
+      h('button', {
+        class: 'btn sm',
+        onclick: () => {
+          store.update((st) => {
+            st.settings.deloadDismissed = { ...(st.settings.deloadDismissed || {}), [pid]: week };
+          });
+          rerender();
+        },
+      }, 'Not now'),
+    ));
+}
+
+// Prev/next walks the CALENDAR, so an inserted deload week sits between the
+// program days either side of it exactly as it does in real life.
+function stepDay(pid, dayId, dir) {
+  const c = calIndexOfDayId(pid, dayId) + dir;
+  return dayIdAtCal(pid, Math.max(0, Math.min(lastCalIndex(pid), c)));
+}
+
+// Deload sets are light on purpose. Prefill about 60% of what you last lifted,
+// rounded to the nearest 2.5 kg — a concrete number you can still overwrite.
+export const deloadWeight = (w) => (w == null ? null : Math.max(2.5, Math.round((w * 0.6) / 2.5) * 2.5));
+
 function footerButtons(pid, dayId, rec, prog, rerender) {
   const wrap = h('div', { style: 'display:flex;gap:8px;margin-top:16px;flex-wrap:wrap' });
   wrap.append(h('button', { class: 'btn sm grow', onclick: () => noteSheet(pid, dayId, rerender) },
@@ -771,6 +838,23 @@ function footerButtons(pid, dayId, rec, prog, rerender) {
       onclick: () => { markDay(pid, dayId, 'done'); onDayCompleted(pid, dayId, rerender); },
     }, '✓ Mark day done'));
     wrap.append(h('button', { class: 'btn sm grow', onclick: () => skipSheet(pid, dayId, rerender) }, '⤼ Skip day'));
+  }
+  const dl = deloadIdParts(dayId);
+  if (dl) {
+    wrap.append(h('button', {
+      class: 'btn sm grow',
+      onclick: () => {
+        if (!confirm('Remove this deload week? The days you trained before it go back where they were.')) return;
+        removeDeload(pid, dl.block);
+        toast('Deload removed');
+        location.hash = '#/today';
+        rerender();
+      },
+    }, '✕ Remove deload'));
+  } else if (pid === store.activePid() && programStatus(pid).state === 'active' && deloadPlanFor(pid)) {
+    wrap.append(h('button', {
+      class: 'btn sm grow', onclick: () => deloadSheet(pid, rerender),
+    }, '🌙 Insert deload week'));
   }
   return wrap;
 }

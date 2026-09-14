@@ -1,6 +1,6 @@
 // Fidelity spot-checks: the resolved programs vs the hand-transcribed source
 // tables. Run: node tests/fidelity.mjs
-import { getDay, getWeek, schemeLabel, dayExercises, allDayIds, totalWeeks, PROGRAM_LIST } from '../js/program.js';
+import { EX, getDay, getWeek, schemeLabel, dayExercises, allDayIds, totalWeeks, PROGRAM_LIST } from '../js/program.js';
 
 let fails = 0;
 const eq = (label, actual, expected) => {
@@ -82,7 +82,6 @@ eq('p12 wk5 d1 has deload item', !!find(D('p12','w5d1'), 'deload'), true);
 eq('p12 wk5 d2 has no core', D('p12','w5d2').sections.some((s) => s.title.includes('Core')), false);
 eq('p12 wk5 d4 has core', D('p12','w5d4').sections.some((s) => s.title.includes('Core')), true);
 eq('p12 wk5 d3 is Type A', D('p12','w5d3').sections[0].title.includes('Type A'), true);
-eq('p12 wk5 d6 is Type B', D('p12','w5d6').sections[0].title.includes('Type B'), true);
 eq('p12 wk6 d1 is Type B', D('p12','w6d1').sections[0].title.includes('Type B'), true);
 eq('p12 wk5 d3 freestyle 1 block', sch(D('p12','w5d3'), 'freestyle_jump'), '1×10:00');
 eq('p12 wk7 d3 freestyle 2 blocks', sch(D('p12','w7d3'), 'freestyle_jump'), '2×10:00');
@@ -130,6 +129,25 @@ eq('p12 d3 nordics accessory', sch(D('p12','w1d3'), 'nordics'), '2 WU + 2 WS');
 eq('p12 d6 has no accessories', find(D('p12','w1d6'), 'leg_press'), null);
 eq('p12 d6 has band warm-up', !!find(D('p12','w1d6'), 'band_er'), true);
 eq('p12 d6 has volleyball', !!find(D('p12','w1d6'), 'volleyball'), true);
+// Day 6 is the lower-body strength day in EVERY week — no plyo, week 5 included
+for (const w of [1, 5, 8, 12]) {
+  eq(`p12 wk${w} d6 squat`, sch(D('p12',`w${w}d6`), 'squat'), '2 WU + 2 WS');
+  eq(`p12 wk${w} d6 squat rest`, rest(D('p12',`w${w}d6`), 'squat'), 120);
+  eq(`p12 wk${w} d6 hip thrust`, sch(D('p12',`w${w}d6`), 'hip_thrust'), '2 WU + 2 WS');
+  eq(`p12 wk${w} d6 has no plyo`, dayExercises(D('p12',`w${w}d6`)).some((e) => EX[e.item.ex]?.jump), false);
+}
+eq('p12 d6 leg ext', sch(D('p12','w1d6'), 'leg_ext'), '2 WU + 2 WS');
+eq('p12 d6 ham curl rest', rest(D('p12','w1d6'), 'ham_curl'), 90);
+eq('p12 d6 adduction 2 WS', sch(D('p12','w1d6'), 'adduction'), '2 WS');
+eq('p12 d6 add/abd supersetted',
+  find(D('p12','w1d6'), 'adduction').item.ss === find(D('p12','w1d6'), 'abduction').item.ss, true);
+eq('p12 d6 tibia/calf supersetted',
+  find(D('p12','w1d6'), 'tibia_raise').item.ss === find(D('p12','w1d6'), 'calf_raise').item.ss, true);
+{
+  const t = D('p12','w1d6').sections.map((x) => x.title);
+  eq('p12 d6 strength → band warm-up → volleyball → cardio',
+    t.join(' | '), 'Lower Body Strength | Shoulder Band Warm-Up | Volleyball | Cardio');
+}
 {
   const t = D('p12','w1d1').sections.map((x) => x.title);
   eq('p12 d1 plyo → accessories → cooldown → cardio',

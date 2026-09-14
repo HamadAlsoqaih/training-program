@@ -12,6 +12,8 @@
 // ============================================================================
 import { EX } from './exercises.js';
 import { historyIndex } from './completion.js';
+import { getProgram } from './program.js';
+import { currentWeek, deloadBlocks, timeForDayId } from './schedule.js';
 import * as store from './state.js';
 
 const DAY_MS = 24 * 3600 * 1000;
@@ -141,4 +143,84 @@ export function jumpContactsForDay(pid, dayId) {
     for (const r of list) if (r.pid === pid && r.dayId === dayId) n += contactsForRecord(exId, r);
   }
   return n;
+}
+
+// ---------------------------------------------------------------------------
+// "Should I deload?" — reactive, inside a planned window
+// ---------------------------------------------------------------------------
+// The evidence points at a planned window of roughly 4–8 weeks, with the
+// stronger signal being reactive: performance falling off across consecutive
+// sessions. So: nothing before 4 trained weeks, a suggestion from 4 if
+// something is actually sagging, and a suggestion at 6 regardless.
+export const DELOAD_MIN_WEEKS = 4;
+export const DELOAD_MAX_WEEKS = 6;
+
+// Total weight × reps of the completed sets on one day.
+function sessionLoad(pid, dayId) {
+  const rec = store.prog(pid).days[dayId];
+  if (!rec || rec.auto || !rec.ex) return 0;
+  let v = 0;
+  for (const ex of Object.values(rec.ex)) {
+    for (const set of ex.sets || []) {
+      if (set?.done && set.weight != null && set.reps != null) v += +set.weight * +set.reps;
+    }
+  }
+  return v;
+}
+
+// Two consecutive falls in session volume-load across the last three sessions
+// you actually loaded — the classic "back off" signal.
+function loadIsFalling(pid) {
+  const days = store.prog(pid).days;
+  const loads = Object.keys(days)
+    .map((id) => ({ id, t: timeForDayId(pid, id), v: sessionLoad(pid, id) }))
+    .filter((x) => x.v > 0)
+    .sort((a, b) => a.t - b.t)
+    .slice(-3);
+  return loads.length === 3 && loads[2].v < loads[1].v && loads[1].v < loads[0].v;
+}
+
+// The week training resumed after the most recent deload of any kind.
+function weekAfterLastDeload(pid, curWeek) {
+  const badges = getProgram(pid).badges || {};
+  let resume = 1;
+  for (const w of Object.keys(badges)) {
+    if (+w <= curWeek && String(badges[w]).includes('DELOAD')) resume = Math.max(resume, +w + 1);
+  }
+  for (const b of deloadBlocks(pid)) {
+    if (b.week <= curWeek) resume = Math.max(resume, b.week);   // the week replays after it
+  }
+  return resume;
+}
+
+export function deloadAdvice(pid = store.activePid()) {
+  const curWeek = currentWeek(pid);
+  const from = weekAfterLastDeload(pid, curWeek);
+  const days = store.prog(pid).days;
+  const trained = (w) => {
+    for (let d = 1; d <= 7; d++) {
+      const rec = days[`w${w}d${d}`];
+      if (rec && !rec.auto && (rec.status === 'done'
+        || Object.values(rec.ex || {}).some((x) => (x.sets || []).some((v) => v?.done)))) return true;
+    }
+    return false;
+  };
+  let weeks = 0;
+  for (let w = from; w <= curWeek; w++) if (trained(w)) weeks++;
+
+  if (weeks < DELOAD_MIN_WEEKS) return { show: false, weeks };
+
+  const fatigue = store.prog(pid).fatigue || [];
+  const lastRating = fatigue.length ? fatigue[fatigue.length - 1] : null;
+  const flat = !!lastRating && lastRating.rating <= 2;
+  const falling = loadIsFalling(pid);
+  const spike = spikeCheck(jumpVolumeByWeek({ weeks: 12 })).level === 'spike';
+
+  if (weeks < DELOAD_MAX_WEEKS && !flat && !falling && !spike) return { show: false, weeks };
+
+  const reason = falling ? 'your last two sessions both dropped in volume'
+    : flat ? 'you rated your jumps flat in the last check-in'
+    : spike ? 'your jump volume spiked this week'
+    : `${weeks} straight weeks of training with no let-up`;
+  return { show: true, weeks, reason, signal: falling ? 'load' : flat ? 'fatigue' : spike ? 'jumps' : 'weeks' };
 }

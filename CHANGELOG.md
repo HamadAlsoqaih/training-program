@@ -4,10 +4,65 @@ Every version of this app, from the first build to today. Newest first.
 
 ---
 
+## v8 — Insertable deload weeks, Day 6 strength, week overview
+
+**The 12-Week program's Day 6 is now a strength day**
+- Day 6 was a third lower-body plyo session; it is now Lower Body Strength →
+  Band Warm-Up → Volleyball → Cardio, the same session every week with
+  progressive overload: squat, Nordics, leg extension, hamstring curl,
+  adduction + abduction, tibia + calf raises, hip thrust.
+- Plyo and core content for all 12 weeks is untouched. Days 1 and 3 keep their
+  Type A / Type B assignment exactly as before.
+
+**Insert a deload week, anywhere, as often as you need**
+- A button on Today (and on the suggestion banner) inserts a deload starting
+  **immediately** and running to the end of the current training week — 7 days
+  if you press it on Wednesday, 5 on Friday, 2 on Monday.
+- Each deload day mirrors **that same weekday's session in the week you're in**,
+  with every exercise at one set (a 2 WU + 2 WS lift becomes 1 WU + 1 WS) and
+  weights prefilled at about **60% of your last, rounded to 2.5 kg** and fully
+  editable. Cardio carries on as normal; rest days stay rest days.
+- Afterwards **the same week replays from Day 1 at full volume**. Nothing is
+  renumbered and nothing is skipped — the whole program simply moves a week
+  later. The days you had already trained that week move into the deload week
+  with every set you logged, so the replay starts clean.
+- Deload sets are excluded from PR detection and from the "add weight" hint, so
+  a light week can never lower your numbers or fake a progression.
+- Completion percentages, streaks and adherence are untouched by design: deload
+  days live outside the program's own day count, and nothing new comes due while
+  one is running.
+- Inserted deloads appear in the week list as their own row, and can be removed
+  again — which puts the carried-over days back where they came from.
+
+**"Time for a deload?" banner**
+- Appears on Today, dismissible for the week, with a one-tap insert.
+- Reactive inside a planned window, which is what the evidence supports: never
+  before 4 trained weeks since your last deload; from 4 weeks it fires if
+  session volume-load fell two sessions running, if you rated your jumps flat,
+  or if jump volume spiked; at 6 weeks it fires regardless. The banner names the
+  signal that fired. The program's own deload weeks reset the count too.
+
+**Week overview on Today**
+- A "📅 This week" button opens the seven days of the current week — or of the
+  deload block if one is running — each with a one-line session summary and its
+  date. Tap a day to open it.
+
+**Under the hood**
+- New `js/deload.js` owns the two index spaces (program vs calendar); every date
+  in the app already flowed through `dateForIndex()`, so the shift lands
+  everywhere for free.
+- `js/registry.js` splits the program list out of `program.js`, which is what
+  keeps the import graph acyclic now that more modules need both.
+- New `tests/deload.mjs` (block geometry, mirrored content, the calendar shift,
+  stacking, and the week-1 and final-week boundaries) wired into CI. E2E grows
+  to 72 checks; render/tick budgets unchanged at ~12 ms / ~8 ms.
+
+---
+
 ## v7 — Jump volume tracking, drag fix, new address
 
 **Moving house**
-- The app now lives at **https://hamadalsoqaih.github.io/training/** (it was
+- The app now lives at **https://hamadalsoqaih.github.io/training-program/** (it was
   `.../personal-15week-program/`, a name that stopped being true once there were
   two programs).
 - **Your data comes with it.** Browser storage is scoped to the origin

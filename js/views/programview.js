@@ -3,10 +3,13 @@
 //   Programs  →  Program (start / continue + phases)  →  Phase  →  Week  →  Day
 // ============================================================================
 import { h, svgRing, toast } from '../util.js';
-import { PROGRAM_LIST, getProgram, getWeek, totalWeeks } from '../program.js';
+import { PROGRAM_LIST, getProgram, getWeek, totalWeeks, getDay } from '../program.js';
 import { weekProgress, dayProgress } from '../completion.js';
 import * as store from '../state.js';
-import { todayId, dateForId, fmtDate, weekdayName, isSwapped, currentWeek } from '../schedule.js';
+import {
+  todayId, dateForId, fmtDate, weekdayName, isSwapped, currentWeek,
+  deloadBlocks, deloadDayId, deloadLength,
+} from '../schedule.js';
 import { programNotesSheet, daySwapSheet } from './sheets.js';
 
 const progressOf = (pid) => {
@@ -139,7 +142,21 @@ export function renderPhase(pid, phaseNum) {
     ),
   );
 
+  const blocks = deloadBlocks(pid);
   for (let w = phase.weeks[0]; w <= phase.weeks[1]; w++) {
+    for (const b of blocks.filter((x) => x.week === w)) {
+      container.append(h('a', {
+        class: 'weekrow', href: `#/day/${pid}/${deloadDayId(b.id, b.d0)}`,
+      },
+        h('div', { class: 'ring-mini' }, h('span', { class: 'v' }, '🌙')),
+        h('div', { class: 'grow' },
+          h('div', { class: 'wnum' }, 'Deload',
+            h('span', { class: 'chip deload-chip', style: 'margin-left:8px' }, 'inserted')),
+          h('div', { class: 'wsub' },
+            `${deloadLength(b)} light day${deloadLength(b) > 1 ? 's' : ''} — then Week ${w} runs in full`)),
+        h('div', { class: 'faint' }, '›'),
+      ));
+    }
     const wp = weekProgress(pid, w);
     const badge = program.badges[w];
     container.append(h('a', {

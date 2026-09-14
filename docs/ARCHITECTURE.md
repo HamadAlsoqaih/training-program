@@ -19,7 +19,9 @@ js/
   state.js              localStorage store, schema v2 + migration, export/import
   schedule.js           calendar ↔ program-day mapping, weekday map, swaps
   completion.js         planned days, history index, completion cascade, edits
-  analytics.js          jump / ground-contact volume by calendar week + spikes
+  registry.js           the program list (leaf module — keeps imports acyclic)
+  deload.js             inserted deload weeks: program vs calendar index space
+  analytics.js          jump volume by calendar week, spikes, deload advice
   dragsort.js           hold-to-drag reordering (pointer events, transform only)
   timers.js             stopwatch, countdowns, chime, wake lock
   video.js              in-app HLS player (native on iOS, hls.js elsewhere)
@@ -130,6 +132,19 @@ had *all working sets* done and weight-logged. Warm-ups are excluded.
 `exId@prescribedValue`. When the program itself progresses a duration the key
 changes, so the new prescription automatically wins.
 
+**An inserted deload is a calendar-space shift, never a content change.**
+`js/deload.js` holds the blocks — `{ id, week, at, d0 }` — and the two index
+spaces: a *program index* (0…totalDays-1, never moves) and a *calendar index*
+(the same plus 7 slots per block). `calIndexOf()` maps one way, `slotAtCal()`
+the other, and `dateForIndex()` in `js/schedule.js` composes them, so every
+existing caller shifts for free. A block owns all seven calendar slots of the
+week it interrupts: slots from `d0` on are deload sessions (the same weekday's
+session through `deloadSections()`), and the earlier ones hold the days you had
+already trained, moved across on insert so the replayed week starts clean.
+Because the block is exactly one calendar week, every weekday alignment — the
+day map, week swaps, `progOffset` — survives untouched. `totalDays()` never
+changes, which is why completion percentages can't move.
+
 **Jump volume is bucketed by the calendar, not by program weeks.** The two
 programs number their weeks differently, so `js/analytics.js` buckets ground
 contacts into real Monday-to-Sunday weeks — that is what lets plyo from either
@@ -172,6 +187,7 @@ part of the app that needs a network connection — everything else works offlin
 node tests/fidelity.mjs      # encoded programs vs the source tables
 node tests/schedule.mjs      # anchors, future starts, finished programs
 node tests/analytics.mjs     # jump volume bucketing, multipliers, spike warning
+node tests/deload.mjs        # deload blocks, the calendar shift, boundaries
 python3 -m http.server 8080  # then drive with Playwright at 390×844
 ```
 

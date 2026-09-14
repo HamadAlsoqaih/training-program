@@ -8,7 +8,7 @@
 //   D3 Fri  LB Plyo → Nordics + Calf Raises
 //   D4 Sat  Pull Upper Body → Core
 //   D5 Sun  Rest + cardio
-//   D6 Mon  LB Plyo → Shoulder Band Warm-Up → Volleyball (optional)
+//   D6 Mon  LB Strength → Shoulder Band Warm-Up → Volleyball (optional)
 //   D7 Tue  Full rest
 // ============================================================================
 import { sr, time, wuws, it } from '../schemes.js';
@@ -67,6 +67,26 @@ const armsPull = () => ({
     it('triceps', wuws(0, 2), 60, { ss: 'arms' }),
   ],
 });
+// Day 6 — the same lower-body strength session every week, progressive overload
+// week to week. Order matters: lift first, then the band warm-up, then optional
+// volleyball, then cardio.
+const strengthDay6 = () => [
+  { title: 'Lower Body Strength', tag: 'strength', items: [
+    it('squat', wuws(2, 2), 120),
+    it('nordics', wuws(2, 2), 90),
+    it('leg_ext', wuws(2, 2), 90),
+    it('ham_curl', wuws(2, 2), 90),
+    it('adduction', wuws(0, 2), 60, { ss: 'addabd' }),
+    it('abduction', wuws(0, 2), 60, { ss: 'addabd' }),
+    it('tibia_raise', wuws(0, 2), 60, { ss: 'tibcalf' }),
+    it('calf_raise', wuws(0, 2), 60, { ss: 'tibcalf' }),
+    it('hip_thrust', wuws(2, 2), 90),
+  ]},
+  SHOULDER_WARMUP(),
+  volleyball(),
+  cardio(),
+];
+
 const day1Accessories = () => ({
   title: 'Accessories — after the last strength/hold, before cooldown', tag: 'strength', items: [
     it('leg_press', wuws(2, 2), 0, { ss: 'acc' }),
@@ -298,7 +318,6 @@ function lbDay(week, dayNum) {
   const out = [main];
   if (acc) out.push(acc);
   out.push(coolFor(week));
-  if (dayNum === 6) { out.push(SHOULDER_WARMUP()); out.push(volleyball()); }
   out.push(cardio());
   return out;
 }
@@ -322,12 +341,10 @@ function buildWeek(week) {
     if (week === 5 && dayNum === 1) return 'Deload — light movement + cardio';
     if (week >= 5 && week <= 8) {
       return dayNum === 3 ? 'Plyo Type A (Freestyle) + Nordics & Calf Raises'
-        : dayNum === 1 ? 'Plyo Type B (Max Approach) + Leg Press & Hip Thrust'
-        : 'Plyo Type B (Max Approach) → Band Warm-Up → Volleyball';
+        : 'Plyo Type B (Max Approach) + Leg Press & Hip Thrust';
     }
     return dayNum === 1 ? 'LB Plyo + Leg Press & Hip Thrust'
-      : dayNum === 3 ? 'LB Plyo + Nordics & Calf Raises'
-      : 'LB Plyo → Band Warm-Up → Volleyball';
+      : 'LB Plyo + Nordics & Calf Raises';
   };
 
   return [
@@ -340,7 +357,7 @@ function buildWeek(week) {
     { d: 4, title: 'Pull Upper Body → Core & Mobility', kind: 'upper',
       sections: [SHOULDER_WARMUP(), REHAB(), pullStrength(), armsPull(), coreFor(week), cardio()] },
     { d: 5, title: 'Rest + Cardio', kind: 'rest', sections: [cardio()] },
-    { d: 6, title: label(6), kind: 'plyo', sections: lbDay(week, 6) },
+    { d: 6, title: 'Strength → Band Warm-Up → Volleyball', kind: 'strength', sections: strengthDay6() },
     { d: 7, title: 'Full Rest', kind: 'off', sections: [] },
   ];
 }
@@ -359,7 +376,7 @@ export default {
     'LB Plyo + Nordics & Calf Raises',
     'Pull Upper Body → Core',
     'Rest + Cardio',
-    'LB Plyo → Band Warm-Up → Volleyball',
+    'Strength → Band WU → Volleyball',
     'Full Rest',
   ],
   nutrition: [
@@ -372,6 +389,7 @@ export default {
   ],
   notes: [
     'Cardio: 30 min incline walk (7% incline, 4.5 km/h), 6 days/week (Days 1–6). Day 7 full rest. After month 1–2, swap one session for VO2 max.',
+    'Day 6 is the lower-body strength session — squat, Nordics, leg extension, hamstring curl, adduction/abduction, tibia/calf raises, hip thrust. Same every week, progressive overload. Then the band warm-up and optional volleyball.',
     'Warm-up reps: stick to 10 reps per set. No pyramiding.',
     'Leg Press + Hip Thrust (Day 1): after the last strength/hold exercise, before cooldown. 2 WU + 2 WS each, supersetted.',
     'Nordics + Calf Raises (Day 3): same placement. 2 WU + 2 WS each, supersetted. Nordics: slow 3–5 sec eccentric, progress ROM before adding load. Calf raises: 3s up / 3s down.',

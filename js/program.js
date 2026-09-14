@@ -8,19 +8,18 @@
 // Re-exports the shared exercise catalog and scheme helpers so views only ever
 // import from one place.
 // ============================================================================
+import { PROGRAM_LIST, PROGRAMS, DEFAULT_PROGRAM } from './registry.js';
 import p15 from './programs/p15.js';
-import p12 from './programs/p12.js';
 
 export {
   EX, ytUrl, hasVideo, muxHls, muxPoster, displayName, cableName,
 } from './exercises.js';
 export { fmtSecs, schemeLabel, schemeSets } from './schemes.js';
 
-import { schemeSets } from './schemes.js';
+import { schemeSets, deloadSections } from './schemes.js';
+import { deloadIdParts, deloadBlock, isDeloadSlot } from './deload.js';
 
-export const PROGRAM_LIST = [p15, p12];
-export const PROGRAMS = Object.fromEntries(PROGRAM_LIST.map((p) => [p.id, p]));
-export const DEFAULT_PROGRAM = p15.id;
+export { PROGRAM_LIST, PROGRAMS, DEFAULT_PROGRAM };
 
 export const getProgram = (pid) => PROGRAMS[pid] || p15;
 export const totalWeeks = (pid) => getProgram(pid).weeks;
@@ -53,10 +52,45 @@ export function getWeek(pid, week) {
 }
 
 export function getDay(pid, dayId) {
+  if (deloadIdParts(dayId)) return getDeloadDay(pid, dayId);
   const m = /^w(\d+)d([1-7])$/.exec(dayId || '');
   if (!m) return null;
   const week = getWeek(pid, +m[1]);
   return week ? week.days[+m[2] - 1] : null;
+}
+
+// --- inserted deload days ---------------------------------------------------
+// A deload day mirrors the SAME weekday in the week being interrupted — you
+// repeat that session lightly, you don't preview a session you've never done.
+// Slots before the block's d0 are the days you had already trained that week,
+// so they keep their full volume; from d0 on, every set is capped to one.
+// Cached on the block object itself: a day object must keep its identity or the
+// dayExercises() WeakMap re-flattens the day on every render.
+const deloadCache = new Map();
+
+export function getDeloadDay(pid, dayId) {
+  const parts = deloadIdParts(dayId);
+  const block = parts && deloadBlock(parts.block, pid);
+  if (!block) return null;
+  const key = `${pid}:${dayId}`;
+  const hit = deloadCache.get(key);
+  if (hit && hit.block === block) return hit.day;
+  const src = getDay(pid, `w${block.week}d${parts.d}`);
+  if (!src) return null;
+
+  const light = isDeloadSlot(block, parts.d);
+  const day = {
+    ...src,
+    id: dayId,
+    week: null,
+    deload: block.id,
+    deloadWeek: block.week,
+    light,
+    title: light ? `Deload — ${src.title}` : `${src.title} — before the deload`,
+    sections: light ? deloadSections(src.sections) : src.sections,
+  };
+  deloadCache.set(key, { block, day });
+  return day;
 }
 
 export function allDayIds(pid) {

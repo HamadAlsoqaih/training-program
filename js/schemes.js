@@ -44,3 +44,9 @@ export function capSets(section, cap) {
     }),
   };
 }
+
+// A whole day at deload intensity: every section capped to one set — which for
+// a "2 WU + 2 WS" item means 1 WU + 1 WS — except cardio, which continues as
+// normal. Used by the programs' own deload weeks and by inserted ones.
+export const deloadSections = (sections) =>
+  sections.map((s) => (s.tag === 'cardio' ? s : capSets(s, 1)));

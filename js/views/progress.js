@@ -8,7 +8,7 @@ import {
 } from '../program.js';
 import * as store from '../state.js';
 import { dayProgress, weekProgress, historyFor, plannedDay } from '../completion.js';
-import { todayIndex, indexToId, dateForId, fmtDate, weekdayName, currentWeek } from '../schedule.js';
+import { todayIndex, elapsedIndex, indexToId, dateForId, fmtDate, weekdayName, currentWeek } from '../schedule.js';
 import { fmtMs } from '../timers.js';
 import { lineChart, barChart } from '../charts.js';
 import { jumpVolumeByWeek, spikeCheck, freestyleBlocks, FREESTYLE } from '../analytics.js';
@@ -19,7 +19,9 @@ export function renderProgress(rerender) {
   const program = getProgram(pid);
   const s = store.get();
   const nDays = totalDays(pid);
-  const tIdx = todayIndex();
+  // During an inserted deload nothing new has come due, so adherence and the
+  // streak measure up to the day before the week being replayed.
+  const tIdx = elapsedIndex(pid);
   const curWeek = currentWeek(pid);
 
   // ---- one pass over the program's days ----------------------------------

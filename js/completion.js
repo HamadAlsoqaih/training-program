@@ -13,7 +13,10 @@
 import { getDay, getWeek, dayExercises, phaseOf, totalDays, totalWeeks, PROGRAM_LIST } from './program.js';
 import { schemeSets } from './schemes.js';
 import * as store from './state.js';
-import { indexToId, idToIndex, dateForIndex, todayId } from './schedule.js';
+import {
+  indexToId, idToIndex, dateForIndex, todayId, todaySlot, timeForDayId,
+  isDeloadId, deloadIdParts, deloadDayId, deloadBlocks, realToday, toISO,
+} from './schedule.js';
 
 const DAY_MS = 24 * 3600 * 1000;
 
@@ -101,7 +104,10 @@ function buildHistoryIndex() {
       const planned = plannedDay(pid, dayId);
       if (!planned) continue;
       const index0 = idToIndex(dayId);
-      const t = dateForIndex(index0, pid)?.getTime() ?? index0 * DAY_MS;
+      const t = timeForDayId(pid, dayId);
+      // A deload day is light by design — it must never be read as a plateau,
+      // a PR, or a reason to add weight next time.
+      const light = isDeloadId(dayId) && (getDay(pid, dayId)?.light ?? true);
       for (const e of planned.entries) {
         const exRec = rec.ex?.[e.key];
         // Tapped ground contacts (Freestyle Jumping) live on the day, not on
@@ -133,7 +139,7 @@ function buildHistoryIndex() {
         list.push({
           pid, dayId, index: index0, t, loggedAt, at: loggedAt || t, sets,
           total: e.sets, doneCount, wu: e.wu, wsTotal: e.sets - e.wu, wsDone,
-          defReps: e.sch.reps ?? null, side: !!e.item.side, taps,
+          defReps: e.sch.reps ?? null, side: !!e.item.side, taps, deload: light,
           alt: exRec?.alt || null, mode: exRec?.mode || 'band',
           note: rec.note || null,
         });
@@ -154,10 +160,7 @@ export function historyIndex() {
 export const historyFor = (exId) => historyIndex().get(exId) || [];
 
 // Timestamp of a given day — used to ask "what did I do BEFORE this session?"
-export const dayTime = (pid, dayId) => {
-  const i = idToIndex(dayId);
-  return dateForIndex(i, pid)?.getTime() ?? i * DAY_MS;
-};
+export const dayTime = (pid, dayId) => timeForDayId(pid, dayId);
 
 // The most recent session of this exercise ANYWHERE — any program — excluding
 // the day you are currently looking at. Progression follows the exercise, not
@@ -177,18 +180,32 @@ export function lastSessionFor(exId, ctx, mode) {
   return null;
 }
 
+// Same, but skipping deload sessions — what "how strong am I" questions want.
+export function lastWorkingSessionFor(exId, ctx, mode) {
+  const list = historyFor(exId);
+  const cur = typeof ctx === 'object' && ctx ? ctx : null;
+  for (let i = list.length - 1; i >= 0; i--) {
+    const r = list[i];
+    if (r.deload) continue;
+    if (cur && r.pid === cur.pid && r.dayId === cur.dayId) continue;
+    if (mode && r.mode !== mode) continue;
+    return r;
+  }
+  return null;
+}
+
 export function bestWeight(list) {
   let best = null;
-  for (const h of list) for (const s of h.sets) {
+  for (const h of list) { if (h.deload) continue; for (const s of h.sets) {
     if (s.weight != null && (best === null || +s.weight > best)) best = +s.weight;
-  }
+  } }
   return best;
 }
 
 // Program rule: add weight once every WORKING set was completed cleanly.
 // Warm-up sets are ignored; a partial session never triggers the hint.
 export function overloadHint(exId, ctx, mode) {
-  const last = lastSessionFor(exId, ctx, mode);
+  const last = lastWorkingSessionFor(exId, ctx, mode);
   if (!last || last.wsTotal <= 0) return null;
   if (last.wsDone < last.wsTotal) return null;
   const wsLogged = last.sets.filter((s) => s.i >= last.wu && s.done && s.weight != null);
@@ -374,8 +391,9 @@ export function isLiveDay(pid, dayId) {
 // scope: 'day' (this day only) | 'phase' (same day-slot across this phase,
 // skipping days already completed so history is never rewritten).
 export function dayIdsForScope(pid, dayId, scope) {
-  if (scope !== 'phase') return [dayId];
+  if (scope !== 'phase' || isDeloadId(dayId)) return [dayId];
   const idx = idToIndex(dayId);
+  if (idx == null) return [dayId];
   const week = Math.floor(idx / 7) + 1;
   const d = (idx % 7) + 1;
   const phase = phaseOf(pid, week);
@@ -488,3 +506,76 @@ export const hasCustomPlan = (pid, dayId) => {
   const p = store.day(dayId, pid)?.plan;
   return !!p && (p.secOrder?.length || p.exOrder || (p.ex && Object.keys(p.ex).length));
 };
+
+// ---------------------------------------------------------------------------
+// Inserted deload weeks
+// ---------------------------------------------------------------------------
+// Splices one extra calendar week in ahead of the week you are training. The
+// deload runs from today through the end of that week, mirroring the same
+// weekday's session at one set; afterwards the week replays from Day 1 at full
+// volume. Program indices never move, so nothing renumbers.
+//
+// Days you had already trained this week are MOVED onto the block, so the
+// replayed week starts genuinely clean and no logged set is lost.
+export function deloadPlanFor(pid = store.activePid(), now = new Date()) {
+  const slot = todaySlot(pid, now);
+  if (slot.state !== 'active' || slot.deload) return null;
+  let week = Math.floor(slot.index / 7) + 1;
+  let d0 = (slot.index % 7) + 1;
+  // Already trained today? Then today counts as done and the deload starts
+  // tomorrow; if that runs off the end of the week, deload the next one whole.
+  if (dayTouched(pid, `w${week}d${d0}`)) d0 += 1;
+  if (d0 > 7) { week += 1; d0 = 1; }
+  if (week > totalWeeks(pid)) return null;      // nothing left to deload
+  return { week, at: (week - 1) * 7, d0, deloadDays: 8 - d0 };
+}
+
+const dayTouched = (pid, dayId) => {
+  const rec = store.day(dayId, pid);
+  if (!rec || rec.auto) return false;
+  if (rec.status === 'done' || rec.status === 'skipped') return true;
+  return Object.values(rec.ex || {}).some((x) => (x.sets || []).some((v) => v?.done));
+};
+
+export function insertDeload(pid = store.activePid(), now = new Date()) {
+  const plan = deloadPlanFor(pid, now);
+  if (!plan) return null;
+  let created = null;
+  store.update((s) => {
+    const p = s.programs[pid];
+    const list = p.setup.deloads || (p.setup.deloads = []);
+    const id = list.reduce((m, b) => Math.max(m, b.id), 0) + 1;
+    created = { id, week: plan.week, at: plan.at, d0: plan.d0, startedAt: Date.now() };
+    list.push(created);
+
+    // carry this week's finished days across so the replay starts clean
+    for (let d = 1; d < plan.d0; d++) {
+      const from = `w${plan.week}d${d}`;
+      if (!p.days[from]) continue;
+      p.days[deloadDayId(id, d)] = p.days[from];
+      delete p.days[from];
+      if (s.session?.pid === pid && s.session?.dayId === from) s.session.dayId = deloadDayId(id, d);
+    }
+  });
+  return created;
+}
+
+export function removeDeload(pid, blockId) {
+  const block = deloadBlocks(pid).find((b) => b.id === blockId);
+  if (!block) return false;
+  store.update((s) => {
+    const p = s.programs[pid];
+    p.setup.deloads = (p.setup.deloads || []).filter((b) => b.id !== blockId);
+    for (let d = 1; d <= 7; d++) {
+      const id = deloadDayId(blockId, d);
+      const rec = p.days[id];
+      if (!rec) continue;
+      delete p.days[id];
+      // full-volume days go back where they came from; the light days went with
+      // the deload that no longer exists
+      if (d < block.d0) p.days[`w${block.week}d${d}`] = rec;
+      if (s.session?.pid === pid && s.session?.dayId === id) s.session = null;
+    }
+  });
+  return true;
+}

@@ -1,0 +1,9 @@
+# Every commit in this repository is Hamad's. This file maps the machine
+# identities that tooling has used along the way onto that one name, so any
+# view built from git history — GitHub's contributor list, `git shortlog -sn`,
+# `git blame` — reports a single author.
+HamadAlsoqaih <129183241+HamadAlsoqaih@users.noreply.github.com>
+HamadAlsoqaih <129183241+HamadAlsoqaih@users.noreply.github.com> <noreply@anthropic.com>
+HamadAlsoqaih <129183241+HamadAlsoqaih@users.noreply.github.com> Claude <noreply@anthropic.com>
+HamadAlsoqaih <129183241+HamadAlsoqaih@users.noreply.github.com> <41898282+github-actions[bot]@users.noreply.github.com>
+HamadAlsoqaih <129183241+HamadAlsoqaih@users.noreply.github.com> github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>

@@ -1,5 +1,5 @@
 // Service worker — cache-first app shell for full offline use.
-const CACHE = 't15-v8';
+const CACHE = 't15-v9';
 const ASSETS = [
   './',
   './index.html',
@@ -11,6 +11,7 @@ const ASSETS = [
   './js/deload.js',
   './js/programs/p15.js',
   './js/programs/p12.js',
+  './js/programs/p12plus.js',
   './js/exercises.js',
   './js/schemes.js',
   './js/video.js',

@@ -15,7 +15,8 @@ js/
   schemes.js            prescription builders: sr / time / wuws + formatting
   program.js            program registry + facade (getWeek, getDay, caching)
   programs/p15.js       15-Week Program definition
-  programs/p12.js       12-Week Vert Code definition
+  programs/p12.js       12-Week Vert Code definition (exports its shared blocks)
+  programs/p12plus.js   12-Week+ — reuses p12's plyo/core/cooldown blocks
   state.js              localStorage store, schema v2 + migration, export/import
   schedule.js           calendar ↔ program-day mapping, weekday map, swaps
   completion.js         planned days, history index, completion cascade, edits

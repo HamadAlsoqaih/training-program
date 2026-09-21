@@ -15,8 +15,10 @@ offline at the gym.
 |---|---|---|
 | **15-Week Program** | 15 weeks · 4 phases | Volleyball strength, plyometrics & shoulder rehab |
 | **12-Week Vert Code** | 12 weeks · 4 phases | another program on the same weekly template |
+| **12-Week+** | 12 weeks · 4 phases | Plyo + strength day + push/pull twice a week + shoulder rehab |
 
-Each program keeps its own schedule and progress; the Today tab follows whichever
+Each program brings its own weekday layout (12-Week+ runs Friday → Thursday) and
+keeps its own schedule and progress; the Today tab follows whichever
 one is active. Logged weights are shared, so your numbers carry across.
 
 ## Features

@@ -4,6 +4,26 @@ Every version of this app, from the first build to today. Newest first.
 
 ---
 
+## v9 — Third program: 12-Week+
+
+**12-Week+**
+- Plyometrics twice a week, a strength day, push and pull each twice a week, and
+  the shoulder rehab block — encoded exactly from the source tables.
+- The week runs **Friday → Thursday**: Fri plyo + leg press/hip thrust, Sat full
+  push + mini pull + arms → core, Sun plyo + Nordics/calf raises, Mon cardio
+  only, Tue full pull + mini push + arms, Wed strength → core, Thu full rest.
+  Cardio on Fri, Sat, Mon and Wed.
+- **Mini supersets**: the second movement pattern rides along inside the first —
+  a mini pull slotted into the push day and vice versa, 2 working sets each with
+  no warm-up, supersetted with the lift they share sets with.
+- Its plyo, core and cooldown blocks are **imported from the 12-Week program
+  rather than copied**, so the shared PJF progressions can never drift apart.
+  The fidelity suite asserts that equality directly.
+- Programs can now carry their own **default weekday map**, so 12-Week+ starts
+  on a Friday without you having to set it up by hand.
+
+---
+
 ## v8 — Insertable deload weeks, Day 6 strength, week overview
 
 **The 12-Week program's Day 6 is now a strength day**

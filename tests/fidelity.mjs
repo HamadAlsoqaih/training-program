@@ -1,6 +1,6 @@
 // Fidelity spot-checks: the resolved programs vs the hand-transcribed source
 // tables. Run: node tests/fidelity.mjs
-import { EX, getDay, getWeek, schemeLabel, dayExercises, allDayIds, totalWeeks, PROGRAM_LIST } from '../js/program.js';
+import { EX, getDay, getWeek, schemeLabel, dayExercises, allDayIds, totalWeeks, PROGRAM_LIST, PROGRAMS } from '../js/program.js';
 
 let fails = 0;
 const eq = (label, actual, expected) => {
@@ -55,6 +55,70 @@ eq('p15 KB anti-rotation stays reps', sch(D('p15','w2d2'), 'bu_kb_hold'), '3×10
 }
 
 // ============================================================================
+console.log('— 12-Week+ —');
+const P = 'p12p';
+// weekly template: Fri plyo, Sat push, Sun plyo, Mon cardio, Tue pull, Wed strength, Thu rest
+eq('12w+ 12 weeks', totalWeeks(P), 12);
+eq('12w+ d4 is cardio only', D(P,'w1d4').sections.map((x) => x.title).join('|'), 'Cardio');
+eq('12w+ d7 is full rest', D(P,'w1d7').sections.length, 0);
+eq('12w+ d1 has cardio', D(P,'w1d1').sections.some((x) => x.tag === 'cardio'), true);
+eq('12w+ d3 has no cardio', D(P,'w1d3').sections.some((x) => x.tag === 'cardio'), false);
+eq('12w+ d5 has no cardio', D(P,'w1d5').sections.some((x) => x.tag === 'cardio'), false);
+eq('12w+ day 1 lands on Friday by default', PROGRAMS[P].defaultDayMap[1], 5);
+// accessories split: Leg Press + Hip Thrust on Friday, Nordics + Calf Raises on Sunday
+eq('12w+ Fri leg press', sch(D(P,'w1d1'), 'leg_press'), '2 WU + 2 WS');
+eq('12w+ Fri has no nordics accessory', find(D(P,'w1d1'), 'nordics'), null);
+eq('12w+ Sun nordics', sch(D(P,'w1d3'), 'nordics'), '2 WU + 2 WS');
+eq('12w+ Sun calf raises', sch(D(P,'w1d3'), 'calf_raise'), '2 WU + 2 WS');
+// push day: full push 3x10 + mini pull at 2 WS, supersetted
+eq('12w+ Sat lateral raise', sch(D(P,'w1d2'), 'lateral_raise'), '3×10');
+eq('12w+ Sat mini pull face pull', sch(D(P,'w1d2'), 'face_pull'), '2 WS');
+eq('12w+ Sat mini pull seated row', sch(D(P,'w1d2'), 'seated_row'), '2 WS');
+eq('12w+ Sat mini pull low row', sch(D(P,'w1d2'), 'low_row'), '2 WS');
+eq('12w+ Sat lateral raise ↔ face pull supersetted',
+  find(D(P,'w1d2'), 'lateral_raise').item.ss === find(D(P,'w1d2'), 'face_pull').item.ss, true);
+eq('12w+ Sat banded complex is not supersetted', find(D(P,'w1d2'), 'banded_complex').item.ss, undefined);
+eq('12w+ Sat triceps first', sch(D(P,'w1d2'), 'triceps'), '2 WS');
+// pull day: full pull 3x10 + mini push at 2 WS
+eq('12w+ Tue low row', sch(D(P,'w1d5'), 'low_row'), '3×10');
+eq('12w+ Tue mini push chest press', sch(D(P,'w1d5'), 'chest_press'), '2 WS');
+eq('12w+ Tue mini push lateral raise', sch(D(P,'w1d5'), 'lateral_raise'), '2 WS');
+eq('12w+ Tue mini push push-up', sch(D(P,'w1d5'), 'pushup'), '2 WS');
+// strength day
+eq('12w+ Wed squat', sch(D(P,'w1d6'), 'squat'), '2 WU + 2 WS');
+eq('12w+ Wed squat rest', rest(D(P,'w1d6'), 'squat'), 120);
+eq('12w+ Wed hip thrust', sch(D(P,'w1d6'), 'hip_thrust'), '2 WU + 2 WS');
+eq('12w+ Wed has core', D(P,'w1d6').sections.some((x) => x.tag === 'core'), true);
+// core twice a week, and both use the same phase content
+eq('12w+ Sat has core', D(P,'w1d2').sections.some((x) => x.tag === 'core'), true);
+eq('12w+ Sat and Wed share the core block',
+  sch(D(P,'w1d2'), 'rocking_deadbug'), sch(D(P,'w1d6'), 'rocking_deadbug'));
+// plyo progressions match the shared PJF source exactly
+eq('12w+ wk1 Fri one leg speed drop', sch(D(P,'w1d1'), 'ol_speed_drop'), '2×6');
+eq('12w+ wk2 Fri one leg speed drop', sch(D(P,'w2d1'), 'ol_speed_drop'), '3×7');
+eq('12w+ wk3 Fri sd lateral push', sch(D(P,'w3d1'), 'sd_lat_push'), '3×4');
+eq('12w+ wk4 Fri long duration jump', sch(D(P,'w4d1'), 'long_dur_jump'), '3×0:45');
+eq('12w+ wk1 Fri and Sun run the same plyo',
+  sch(D(P,'w1d1'), 'lat_bounds'), sch(D(P,'w1d3'), 'lat_bounds'));
+// phase 3: week 5 Friday deloads, Sunday is Type A, later Fridays are Type B
+eq('12w+ wk5 Fri is a deload (no plyo)', find(D(P,'w5d1'), 'sd_of_jump'), null);
+eq('12w+ wk5 Fri has the deload item', !!find(D(P,'w5d1'), 'deload'), true);
+eq('12w+ wk5 Sat drops core', D(P,'w5d2').sections.some((x) => x.tag === 'core'), false);
+eq('12w+ wk5 Sat keeps push + arms', sch(D(P,'w5d2'), 'chest_press'), '3×10');
+eq('12w+ wk5 Sun is Type A', D(P,'w5d3').sections[0].title.includes('Type A'), true);
+eq('12w+ wk6 Fri is Type B', D(P,'w6d1').sections[0].title.includes('Type B'), true);
+eq('12w+ wk5 Sun freestyle 1 block', sch(D(P,'w5d3'), 'freestyle_jump'), '1×10:00');
+eq('12w+ wk7 Sun freestyle 2 blocks', sch(D(P,'w7d3'), 'freestyle_jump'), '2×10:00');
+eq('12w+ wk7 drach dropped from Type A', find(D(P,'w7d3'), 'drach_jumps'), null);
+eq('12w+ wk7 drach kept in Type B', sch(D(P,'w7d1'), 'drach_jumps'), '3×6');
+// phase 4
+eq('12w+ wk9 consecutive hurdle', sch(D(P,'w9d1'), 'consec_hurdle'), '6×3');
+eq('12w+ wk12 consecutive hurdle', sch(D(P,'w12d1'), 'consec_hurdle'), '6×4');
+eq('12w+ phase 4 has no 711 breathing', find(D(P,'w9d1'), 'breathing_711'), null);
+// the shared blocks really are shared — identical to the 12-Week program
+eq('12w+ plyo matches 12-week wk1', sch(D(P,'w1d1'), 'standing_jump'), sch(D('p12','w1d1'), 'standing_jump'));
+eq('12w+ core matches 12-week wk3', sch(D(P,'w3d2'), 'splank_abd'), sch(D('p12','w3d2'), 'splank_abd'));
+
 console.log('— 12-Week Vert Code —');
 // Phase 1
 eq('p12 wk1 d1 one leg speed drop', sch(D('p12','w1d1'), 'ol_speed_drop'), '2×6');

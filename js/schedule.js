@@ -20,7 +20,7 @@
 // comes from dateForCal().
 // ============================================================================
 import { get, setupOf, activePid } from './state.js';
-import { totalDays, totalWeeks } from './program.js';
+import { totalDays, totalWeeks, getProgram } from './program.js';
 import {
   deloadBlocks, deloadBlock, blockCalStart, calIndexOf, slotAtCal,
   deloadDayId, deloadIdParts, isDeloadId, deloadLength,
@@ -60,7 +60,10 @@ function effectiveDate(now = new Date(), pid = activePid()) {
 }
 
 // --- weekday mapping --------------------------------------------------------
-export const dayMap = (pid = activePid()) => setupOf(pid).dayMap || DEFAULT_DAY_MAP;
+// A program may ship its own weekday layout — 12-Week+ runs Friday → Thursday —
+// which is the starting point until you set your own in the start flow.
+export const dayMap = (pid = activePid()) =>
+  setupOf(pid).dayMap || getProgram(pid).defaultDayMap || DEFAULT_DAY_MAP;
 export const weekdayOfProg = (d, pid = activePid()) => dayMap(pid)[d];
 const progOfWeekdayIn = (m, wd) => {
   for (let d = 1; d <= 7; d++) if (m[d] === wd) return d;

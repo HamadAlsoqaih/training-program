@@ -13,8 +13,12 @@
 // ============================================================================
 import { sr, time, wuws, it } from '../schemes.js';
 
+// The plyo, core, cooldown, warm-up and rehab blocks below are exported so the
+// 12-Week+ program can reuse the SAME source rather than a copy — that is what
+// guarantees the two programs' shared content can never drift apart.
+
 // --- consistent blocks (note: p12 uses LOWER warm-up/rehab volumes than p15)
-const SHOULDER_WARMUP = () => ({
+export const SHOULDER_WARMUP = () => ({
   title: 'Shoulder Band Warm-Up', tag: 'warmup', items: [
     it('sa_pulldown', sr(1, 10)),
     it('cb_sa_pulldown', sr(1, 10)),
@@ -26,7 +30,7 @@ const SHOULDER_WARMUP = () => ({
     it('oh_iso_hold', time(2, 30)),
   ],
 });
-const REHAB = () => ({
+export const REHAB = () => ({
   title: 'Rehab', tag: 'rehab', items: [
     it('bu_kb_press', sr(2, 10)),
     it('bu_kb_hold', sr(2, 10)),
@@ -37,7 +41,7 @@ const REHAB = () => ({
     it('scap_pushup', sr(2, 10)),
   ],
 });
-const pushStrength = () => ({
+export const pushStrength = () => ({
   title: 'Strength — Push', tag: 'strength', items: [
     it('lateral_raise', sr(3, 10)),
     it('banded_complex', sr(3, 10)),
@@ -46,7 +50,7 @@ const pushStrength = () => ({
     it('pec_deck', sr(3, 10)),
   ],
 });
-const pullStrength = () => ({
+export const pullStrength = () => ({
   title: 'Strength — Pull', tag: 'strength', items: [
     it('low_row', sr(3, 10)),
     it('mid_row', sr(3, 10)),
@@ -55,13 +59,13 @@ const pullStrength = () => ({
     it('seated_row', sr(3, 10)),
   ],
 });
-const armsPush = () => ({
+export const armsPush = () => ({
   title: 'Arms — Triceps first (superset)', tag: 'arms', items: [
     it('triceps', wuws(0, 2), 0, { ss: 'arms' }),
     it('biceps', wuws(0, 2), 60, { ss: 'arms' }),
   ],
 });
-const armsPull = () => ({
+export const armsPull = () => ({
   title: 'Arms — Biceps first (superset)', tag: 'arms', items: [
     it('biceps', wuws(0, 2), 0, { ss: 'arms' }),
     it('triceps', wuws(0, 2), 60, { ss: 'arms' }),
@@ -87,34 +91,34 @@ const strengthDay6 = () => [
   cardio(),
 ];
 
-const day1Accessories = () => ({
+export const day1Accessories = () => ({
   title: 'Accessories — after the last strength/hold, before cooldown', tag: 'strength', items: [
     it('leg_press', wuws(2, 2), 0, { ss: 'acc' }),
     it('hip_thrust', wuws(2, 2), 90, { ss: 'acc' }),
   ],
 });
-const day3Accessories = () => ({
+export const day3Accessories = () => ({
   title: 'Accessories — after the last strength/hold, before cooldown', tag: 'strength', items: [
     it('nordics', wuws(2, 2), 0, { ss: 'acc' }),
     it('calf_raise', wuws(2, 2), 90, { ss: 'acc' }),
   ],
 });
-const cardio = () => ({
+export const cardio = () => ({
   title: 'Cardio', tag: 'cardio', items: [it('incline_walk', time(1, 1800))],
 });
 const volleyball = () => ({
   title: 'Volleyball', tag: 'skill', items: [it('volleyball', sr(1, 1), 0, { opt: true })],
 });
-const cooldown = (items) => ({ title: 'Cooldown', tag: 'cooldown', items });
+export const cooldown = (items) => ({ title: 'Cooldown', tag: 'cooldown', items });
 
 // pair items (1,2) (3,4) (5,6) (7,8) into supersets A–D (source marks these ⤸)
-const pairSupersets = (items) =>
+export const pairSupersets = (items) =>
   items.map((item, i) => ({ ...item, ss: `ss${Math.floor(i / 2)}` }));
 
 // ---------------------------------------------------------------------------
 // PHASE 1 — weeks 1–2
 // ---------------------------------------------------------------------------
-const p1Main = (week) => {
+export const p1Main = (week) => {
   const w2 = week === 2;
   return { title: 'Lower Body Plyo', tag: 'plyo', items: [
     it('dyn_warmup', sr(1, 1), 0, { note: 'No static stretching before the workout' }),
@@ -128,13 +132,13 @@ const p1Main = (week) => {
     it('se_bridge_march', sr(3, w2 ? 6 : 5), 60, { side: true }),
   ]};
 };
-const p1Cool = (week) => cooldown([
+export const p1Cool = (week) => cooldown([
   it('long_dur_jump', time(3, week === 2 ? 35 : 30), 90),
   it('ind_toe_raise', sr(3, week === 2 ? 10 : 8), 45, { side: true }),
   it('breathing_711', time(1, 180)),
   it('static_stretch', time(1, 15), 0, { opt: true }),
 ]);
-const p1Core = (week) => ({
+export const p1Core = (week) => ({
   title: 'Core & Mobility', tag: 'core', items: pairSupersets([
     it('rocking_deadbug', sr(3, 8), 0, { side: true }),
     it('ham_floss', sr(3, week === 2 ? 7 : 5), 30),
@@ -150,7 +154,7 @@ const p1Core = (week) => ({
 // ---------------------------------------------------------------------------
 // PHASE 2 — weeks 3–4
 // ---------------------------------------------------------------------------
-const p2Main = (week) => {
+export const p2Main = (week) => {
   const i = week - 3; // 0 | 1
   return { title: 'Lower Body Plyo', tag: 'plyo', items: [
     it('dyn_warmup', sr(1, 1)),
@@ -165,12 +169,12 @@ const p2Main = (week) => {
       note: 'MAX time on the last set — stop at 9/10 burn or 1:30. If two legs is easy, switch to one leg.' }),
   ]};
 };
-const p2Cool = (week) => cooldown([
+export const p2Cool = (week) => cooldown([
   it('long_dur_jump', time(3, week === 4 ? 45 : 40), 90),
   it('breathing_711', time(1, 180)),
   it('static_stretch', time(1, 15), 0, { opt: true }),
 ]);
-const p2Core = () => ({
+export const p2Core = () => ({
   title: 'Core & Mobility', tag: 'core', items: pairSupersets([
     it('rocking_deadbug', sr(3, 10)),
     it('ham_floss', sr(3, 10), 30),
@@ -198,7 +202,7 @@ const p3Tail = (i) => [
   it('achilles_spring', sr(3, [7, 8, 9, 10][i]), 60, { side: true,
     note: 'Forward/back, side-to-side, diagonal each way per leg, then calf raises — that is 1 set' }),
 ];
-const p3TypeA = (week) => {
+export const p3TypeA = (week) => {
   const i = week - 5;
   const drach = i <= 1 ? [it('drach_jumps', sr(3, [4, 5][i]), 60, { side: true })] : [];
   return { title: 'Lower Body Plyo — Type A (Freestyle)', tag: 'plyo', items: [
@@ -209,7 +213,7 @@ const p3TypeA = (week) => {
     ...p3Tail(i),
   ]};
 };
-const p3TypeB = (week) => {
+export const p3TypeB = (week) => {
   const i = week - 5;
   return { title: 'Lower Body Plyo — Type B (Max Approach)', tag: 'plyo', items: [
     ...p3Head(i),
@@ -219,11 +223,11 @@ const p3TypeB = (week) => {
     ...p3Tail(i),
   ]};
 };
-const p3Cool = () => cooldown([
+export const p3Cool = () => cooldown([
   it('breathing_711', time(1, 180)),
   it('static_stretch', time(1, 15), 0, { opt: true }),
 ]);
-const p3Core = (week) => {
+export const p3Core = (week) => {
   const i = week - 5;
   return { title: 'Core & Mobility', tag: 'core', items: pairSupersets([
     it('hand_walkout', sr(3, [5, 6, 7, 8][i])),
@@ -241,7 +245,7 @@ const p3Core = (week) => {
 // ---------------------------------------------------------------------------
 // PHASE 4 — weeks 9–12  (no Seven Eleven Breathing in this phase)
 // ---------------------------------------------------------------------------
-const p4Main = (week) => {
+export const p4Main = (week) => {
   const i = week - 9;
   return { title: 'Lower Body Plyo', tag: 'plyo', items: [
     it('dyn_warmup', sr(1, 1)),
@@ -259,8 +263,8 @@ const p4Main = (week) => {
     it('bof_ol_turn', sr(3, [4, 5, 6, 7][i]), 45),
   ]};
 };
-const p4Cool = () => cooldown([it('static_stretch', time(1, 15), 0, { opt: true })]);
-const p4Core = (week) => {
+export const p4Cool = () => cooldown([it('static_stretch', time(1, 15), 0, { opt: true })]);
+export const p4Core = (week) => {
   const i = week - 9;
   return { title: 'Core & Mobility', tag: 'core', items: pairSupersets([
     it('roll_cross_touch', sr(3, [2, 3, 3, 4][i]), 0, { side: true }),

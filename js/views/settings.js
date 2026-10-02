@@ -37,11 +37,18 @@ function dayMapEditor(pid, initialMap, initialWeekStart, onChange) {
     for (let d = 1; d <= 7; d++) if ((initialMap[d] - weekStart + 7) % 7 === p) return d;
     return p + 1;
   });
+  // The program's own running order of sessions. Choosing Day 1 rotates this
+  // cycle, so everything after it follows in the order the program intends.
+  const base = getProgram(pid).defaultDayMap || DEFAULT_DAY_MAP;
+  const cycle = [1, 2, 3, 4, 5, 6, 7].sort((a, b) =>
+    ((base[a] - base[1] + 7) % 7) - ((base[b] - base[1] + 7) % 7));
+  let editing = false;
 
   const startSel = h('select', { class: 'sel', style: 'width:132px;height:42px;font-size:14px' },
     ...WEEKDAY_NAMES.map((n, wd) => h('option', { value: wd, selected: weekStart === wd }, n)));
-  const labels = [], selects = [];
+  const labels = [], selects = [], texts = [];
   const hint = h('div', { class: 'tiny', style: 'display:none;margin-top:8px;color:var(--warn)' });
+  const editBtn = document.createTextNode('');
 
   const getMap = () => {
     const m = {};
@@ -52,7 +59,13 @@ function dayMapEditor(pid, initialMap, initialWeekStart, onChange) {
     for (let p = 0; p < 7; p++) {
       labels[p].firstChild.textContent = `${WEEKDAY_NAMES[(weekStart + p) % 7]}`;
       selects[p].value = String(order[p]);
+      if (texts[p]) texts[p].textContent = slots[order[p] - 1];
+      if (p > 0) {
+        selects[p].style.display = editing ? '' : 'none';
+        texts[p].style.display = editing ? 'none' : '';
+      }
     }
+    editBtn.textContent = editing ? '✓ Done editing' : '✎ Edit days one by one';
     startSel.value = String(weekStart);
     // two of the same hard session back to back (wrapping into next week)
     const hard = new Set(['upper', 'strength', 'plyo']);
@@ -86,17 +99,26 @@ function dayMapEditor(pid, initialMap, initialWeekStart, onChange) {
       h('div', { class: 'tiny faint' }, `Day ${p + 1}`));
     const sel = h('select', { class: 'sel', style: 'max-width:190px;height:42px;font-size:13px' },
       ...slots.map((label, i) => h('option', { value: i + 1 }, label)));
+    const txt = h('div', { class: 'small', style: 'max-width:190px;text-align:right;font-weight:600' });
     sel.addEventListener('change', () => {
       const d = +sel.value;
-      const q = order.indexOf(d);
-      order[q] = order[p];       // swap, so every session is used exactly once
-      order[p] = d;
+      if (p === 0 && !editing) {
+        // Day 1 chosen: the rest of the week follows in the program's order
+        const at = cycle.indexOf(d);
+        for (let k = 0; k < 7; k++) order[k] = cycle[(at + k) % 7];
+      } else {
+        const q = order.indexOf(d);
+        order[q] = order[p];     // swap, so every session is used exactly once
+        order[p] = d;
+      }
       refresh();
     });
-    labels.push(lab); selects.push(sel);
-    rows.push(h('div', { class: 'row', style: 'padding:5px 0;gap:8px' }, lab, sel));
+    labels.push(lab); selects.push(sel); texts.push(txt);
+    rows.push(h('div', { class: 'row', style: 'padding:5px 0;gap:8px' }, lab, sel, p > 0 ? txt : null));
   }
-  const el = h('div', {}, head, ...rows, hint);
+  const el = h('div', {}, head, ...rows,
+    h('button', { class: 'btn sm block', style: 'margin-top:8px', onclick: () => { editing = !editing; refresh(); } }, editBtn),
+    hint);
   setTimeout(refresh, 0);
   return {
     el, getMap, rotateTo,

@@ -4,6 +4,19 @@ Every version of this app, from the first build to today. Newest first.
 
 ---
 
+## v13 — Start dates that land where you expect
+
+- **Fixed: "Starts in 8 days" when you picked tomorrow.** A deload week inserted
+  before you restarted a program stayed in front of the new Week 1 and pushed
+  the whole schedule back a week. Saving a new start now removes any deload
+  block at or after that start that has nothing logged in it (carried-over days
+  move back, so nothing is lost). Blocks with logged work are kept.
+- **Picking "Week starts on" jumps the date** to the nearest upcoming matching
+  day — choose Saturday on a Friday and the start becomes tomorrow, Day 1.
+  Rearranging sessions no longer touches the date you already have.
+
+---
+
 ## v12 — Arrange your week however you like
 
 - The week editor is now **your days in order**: pick the weekday your week

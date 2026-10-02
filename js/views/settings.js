@@ -8,11 +8,11 @@
 // ============================================================================
 import { h, toast } from '../util.js';
 import * as store from '../state.js';
-import { seedBefore } from '../completion.js';
+import { seedBefore, clearEmptyDeloadsFrom } from '../completion.js';
 import { PROGRAM_LIST, getProgram, getWeek, daySlotsFor } from '../program.js';
 import {
   idToIndex, toISO, DEFAULT_DAY_MAP, WEEKDAY_NAMES, dayMap, todayIndex, currentWeek,
-  fmtDate, realToday, weekStartWd,
+  fmtDate, realToday, weekStartWd, deloadBlocks,
 } from '../schedule.js';
 import { whereAmISheet } from './sheets.js';
 
@@ -165,17 +165,14 @@ export function renderStart(pid, onDone) {
     const wd = new Date(y, mo - 1, d, 12).getDay();
     daySel.value = String(((wd - mapper.getWeekStart() + 7) % 7) + 1);
   };
-  // If you picked the day, move the date FORWARD to the next matching weekday —
-  // never backwards, and never past a date you typed yourself. (Snapping
-  // backwards is what used to silently rewrite a chosen start date into the
-  // past and made the app think the wrong day was "today".)
+  // Move the date to the NEAREST upcoming day that matches — counted from
+  // today, never backwards, and never over a date you typed yourself.
   const syncDateFromDay = () => {
-    if (dateTouched) return;                       // your date wins, always
+    if (dateTouched) return;
     const target = wdOfPos(+daySel.value);
-    const [y, mo, d] = (dateIn.value || toISO(today)).split('-').map(Number);
-    const cur = new Date(y, mo - 1, d, 12);
-    const shift = (target - cur.getDay() + 7) % 7; // forward only
-    dateIn.value = toISO(new Date(cur.getTime() + shift * 86400000));
+    const base = realToday(pid);
+    const shift = (target - base.getDay() + 7) % 7;
+    dateIn.value = toISO(new Date(base.getTime() + shift * 86400000));
   };
 
   const updatePreview = () => {
@@ -196,12 +193,23 @@ export function renderStart(pid, onDone) {
     preview.innerHTML =
       `${when}<br>That date is <b>Week ${week} · Day ${dayN} (${WEEKDAY_NAMES[wdOfPos(dayN)]})</b> — ${session}.`
       + (wdOk ? '' : `<br><b>Heads up:</b> ${fmtDate(chosen)} is a ${WEEKDAY_NAMES[chosen.getDay()]}, but Day ${dayN} is your ${WEEKDAY_NAMES[wdOfPos(dayN)]}. Pick the matching day or change the date.`)
-      + (seedTgl.checked && (week > 1 || dayN > 1) ? '<br>Everything before it will be marked <b>done (assumed)</b>.' : '');
+      + (seedTgl.checked && (week > 1 || dayN > 1) ? '<br>Everything before it will be marked <b>done (assumed)</b>.' : '')
+      + (deloadBlocks(pid).some((b) => b.at >= (week - 1) * 7)
+        ? '<br>A deload week you added earlier is in front of this start — it will be removed when you save (anything you logged in it is kept).' : '');
   };
 
   mapper = dayMapEditor(pid, bucket.setup.dayMap || program.defaultDayMap || DEFAULT_DAY_MAP,
     bucket.setup.weekStart,
-    () => { rebuildDays(); syncDayFromDate(); updatePreview(); });
+    () => {
+      // A new "Week starts on" means you're picking where Day 1 sits.
+      // Otherwise (sessions rearranged) the date stays and the day follows it.
+      if (mapper.getWeekStart() !== lastWs) {
+        lastWs = mapper.getWeekStart(); daySel.value = '1';
+        rebuildDays(); dateTouched = false; syncDateFromDay();
+      } else { rebuildDays(); syncDayFromDate(); }
+      updatePreview();
+    });
+  let lastWs = mapper.getWeekStart();
   rebuildDays(); syncDayFromDate();
   weekSel.addEventListener('change', updatePreview);
   daySel.addEventListener('change', () => { syncDateFromDay(); updatePreview(); });
@@ -258,6 +266,10 @@ export function renderStart(pid, onDone) {
       onclick: () => {
         if (!mapper.isValid()) { toast('Fix the duplicate weekdays first'); return; }
         const anchorDay = `w${weekSel.value}d${mapper.slotAt(+daySel.value - 1)}`;
+        // A deload you inserted earlier would push a fresh start back a week.
+        // Remove any that sit at or after this start and hold no logged work —
+        // removing one moves any carried-over days back, so nothing is lost.
+        clearEmptyDeloadsFrom(pid, (+weekSel.value - 1) * 7);
         store.update((s) => {
           const b = s.programs[pid];
           b.started = true;

@@ -593,6 +593,28 @@ export function insertDeload(pid = store.activePid(), now = new Date()) {
   return created;
 }
 
+// Did you actually log anything on the block's deload sessions? (Days carried
+// over from before the deload don't count — removing the block moves them back.)
+export function deloadHasWork(pid, block) {
+  for (let d = block.d0; d <= 7; d++) {
+    const rec = store.day(deloadDayId(block.id, d), pid);
+    if (!rec) continue;
+    if (rec.status === 'done' || rec.note) return true;
+    if (Object.values(rec.ex || {}).some((x) => (x.sets || []).some((v) => v?.done || v?.weight != null))) return true;
+  }
+  return false;
+}
+
+// Restarting the schedule: drop deload blocks at or after program index
+// `fromAt` that hold no logged work (they'd push a fresh start back a week).
+export function clearEmptyDeloadsFrom(pid, fromAt) {
+  let n = 0;
+  for (const b of deloadBlocks(pid)) {
+    if (b.at >= fromAt && !deloadHasWork(pid, b) && removeDeload(pid, b.id)) n++;
+  }
+  return n;
+}
+
 export function removeDeload(pid, blockId) {
   const block = deloadBlocks(pid).find((b) => b.id === blockId);
   if (!block) return false;

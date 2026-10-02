@@ -210,5 +210,33 @@ store.update((s) => {
 eq('an inserted deload resets the counter', an.deloadAdvice('p15').weeks, 1);
 eq('and silences the suggestion', an.deloadAdvice('p15').show, false);
 
+// restarting at Week 1 Day 1 clears a leftover, empty deload block so the
+// countdown points at the date you picked (bug: "in 8 days" instead of 1)
+{
+  const restart = (deloads, rec) => {
+    store.resetAll();
+    store.update((s) => {
+      s.activeProgram = 'rz';
+      const b = s.programs.rz;
+      b.started = true;
+      b.setup.dayMap = { 1: 6, 2: 0, 3: 1, 4: 2, 5: 3, 6: 4, 7: 5 }; b.setup.weekStart = 6;
+      b.setup.anchorDay = 'w1d1'; b.setup.anchorDate = '2026-10-03';
+      b.setup.deloads = deloads;
+      if (rec) b.days[rec.id] = rec.body;
+    });
+  };
+  const fri = new Date(2026, 9, 2, 19);
+  const blk = () => [{ id: 1, week: 1, at: 0, d0: 1, slots: [1, 2, 3, 4, 5, 6, 7] }];
+  restart(blk());
+  eq('leftover block pushes start a week', sched.programStatus('rz', fri).daysUntil, 8);
+  eq('restart removes the empty block', comp.clearEmptyDeloadsFrom('rz', 0), 1);
+  eq('now starts tomorrow', sched.programStatus('rz', fri).daysUntil, 1);
+  restart(blk(), { id: 'k1d2', body: { status: 'done', ex: {} } });
+  eq('a block with logged work is kept', comp.clearEmptyDeloadsFrom('rz', 0), 0);
+  eq('and its session is still there', store.day('k1d2', 'rz')?.status, 'done');
+  restart(blk());
+  eq('blocks before the new start are left alone', comp.clearEmptyDeloadsFrom('rz', 7), 0);
+}
+
 console.log(fails ? `\n${fails} failing check(s)` : '\nAll deload checks passed.');
 process.exit(fails ? 1 : 0);

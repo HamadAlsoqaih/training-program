@@ -103,7 +103,7 @@ function buildHistoryIndex() {
       if (!rec || rec.auto || (!rec.ex && !rec.contacts)) continue;
       const planned = plannedDay(pid, dayId);
       if (!planned) continue;
-      const index0 = idToIndex(dayId);
+      const index0 = idToIndex(dayId, pid);
       const t = timeForDayId(pid, dayId);
       // A deload day is light by design — it must never be read as a plateau,
       // a PR, or a reason to add weight next time.
@@ -289,7 +289,7 @@ export function weekProgress(pid, week) {
 export function firstOpenIndex(pid) {
   const n = totalDays(pid);
   for (let i = 0; i < n; i++) {
-    const rec = store.day(indexToId(i), pid);
+    const rec = store.day(indexToId(i, pid), pid);
     if (!rec || (rec.status !== 'done' && rec.status !== 'skipped')) return i;
   }
   return n;
@@ -397,7 +397,7 @@ export function seedBefore(pid, index) {
   store.update((s) => {
     const p = s.programs[pid];
     for (let i = 0; i < index; i++) {
-      const id = indexToId(i);
+      const id = indexToId(i, pid);
       const existing = p.days[id];
       if (existing?.status === 'done' || existing?.status === 'skipped') continue;
       p.days[id] = { ...(existing || { ex: {} }), status: 'done', auto: true, cardioDone: true };
@@ -419,10 +419,12 @@ export function isLiveDay(pid, dayId) {
 // skipping days already completed so history is never rewritten).
 export function dayIdsForScope(pid, dayId, scope) {
   if (scope !== 'phase' || isDeloadId(dayId)) return [dayId];
-  const idx = idToIndex(dayId);
-  if (idx == null) return [dayId];
-  const week = Math.floor(idx / 7) + 1;
-  const d = (idx % 7) + 1;
+  // The same SESSION across the phase — read week and slot from the id itself,
+  // since a position can hold a different session if you've rearranged days.
+  const m = /^w(\d+)d([1-7])$/.exec(dayId);
+  if (!m) return [dayId];
+  const week = +m[1];
+  const d = +m[2];
   const phase = phaseOf(pid, week);
   if (!phase) return [dayId];
   const ids = [];
@@ -551,7 +553,7 @@ export function deloadPlanFor(pid = store.activePid(), now = new Date()) {
   let d0 = (slot.index % 7) + 1;
   // Already trained today? Then today counts as done and the deload starts
   // tomorrow; if that runs off the end of the week, deload the next one whole.
-  if (dayTouched(pid, `w${week}d${d0}`)) d0 += 1;
+  if (dayTouched(pid, indexToId((week - 1) * 7 + d0 - 1, pid))) d0 += 1;
   if (d0 > 7) { week += 1; d0 = 1; }
   if (week > totalWeeks(pid)) return null;      // nothing left to deload
   return { week, at: (week - 1) * 7, d0, deloadDays: 8 - d0 };
@@ -572,12 +574,16 @@ export function insertDeload(pid = store.activePid(), now = new Date()) {
     const p = s.programs[pid];
     const list = p.setup.deloads || (p.setup.deloads = []);
     const id = list.reduce((m, b) => Math.max(m, b.id), 0) + 1;
-    created = { id, week: plan.week, at: plan.at, d0: plan.d0, startedAt: Date.now() };
+    // Which session sits at each position of that week, frozen now — the block
+    // is a fixed event and must not change if you rearrange your days later.
+    const slots = Array.from({ length: 7 }, (_, pos) =>
+      +/d(\d)$/.exec(indexToId(plan.at + pos, pid))[1]);
+    created = { id, week: plan.week, at: plan.at, d0: plan.d0, slots, startedAt: Date.now() };
     list.push(created);
 
     // carry this week's finished days across so the replay starts clean
     for (let d = 1; d < plan.d0; d++) {
-      const from = `w${plan.week}d${d}`;
+      const from = `w${plan.week}d${slots[d - 1]}`;
       if (!p.days[from]) continue;
       p.days[deloadDayId(id, d)] = p.days[from];
       delete p.days[from];
@@ -600,7 +606,7 @@ export function removeDeload(pid, blockId) {
       delete p.days[id];
       // full-volume days go back where they came from; the light days went with
       // the deload that no longer exists
-      if (d < block.d0) p.days[`w${block.week}d${d}`] = rec;
+      if (d < block.d0) p.days[`w${block.week}d${block.slots ? block.slots[d - 1] : d}`] = rec;
       if (s.session?.pid === pid && s.session?.dayId === id) s.session = null;
     }
   });

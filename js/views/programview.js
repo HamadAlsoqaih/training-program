@@ -8,7 +8,7 @@ import { weekProgress, dayProgress } from '../completion.js';
 import * as store from '../state.js';
 import {
   todayId, dateForId, fmtDate, weekdayName, isSwapped, currentWeek,
-  deloadBlocks, deloadDayId, deloadLength,
+  deloadBlocks, deloadDayId, deloadLength, weekIdsInOrder,
 } from '../schedule.js';
 import { programNotesSheet, daySwapSheet } from './sheets.js';
 
@@ -203,7 +203,9 @@ export function renderWeek(pid, weekNum, rerender) {
     container.append(h('div', { class: `banner ${week.badge.includes('DELOAD') ? 'deload' : ''}` }, week.badge));
   }
 
-  for (const day of week.days) {
+  // In calendar order, numbered by position — Day 1 is the day your week starts.
+  const ordered = weekIdsInOrder(weekNum, pid).map((id) => week.days.find((x) => x.id === id));
+  ordered.forEach((day, pos) => {
     const p = dayProgress(pid, day.id);
     const isToday = day.id === tId;
     const date = isActive ? dateForId(day.id, pid) : null;
@@ -211,7 +213,7 @@ export function renderWeek(pid, weekNum, rerender) {
     if (p.status === 'done') statEl = h('div', { class: 'dstat done' }, '✓');
     else if (p.status === 'skipped') statEl = h('div', { class: 'dstat skip' }, '✗');
     else if (p.pct > 0) statEl = h('div', { class: 'dstat part' }, `${Math.round(p.pct * 100)}`);
-    else statEl = h('div', { class: 'dstat' }, String(day.d));
+    else statEl = h('div', { class: 'dstat' }, String(pos + 1));
 
     container.append(h('a', {
       class: `daycard${isToday ? ' today' : ''}${p.status === 'done' ? ' done' : ''}`,
@@ -220,7 +222,7 @@ export function renderWeek(pid, weekNum, rerender) {
       statEl,
       h('div', { class: 'grow' },
         h('div', { style: 'font-weight:700;font-size:15px' },
-          `Day ${day.d} — ${weekdayName(day.d, weekNum, pid)}`,
+          `Day ${pos + 1} — ${weekdayName(day.d, weekNum, pid)}`,
           isToday ? h('span', { class: 'chip accent', style: 'margin-left:7px' }, 'today') : null,
           isSwapped(weekNum, day.d, pid) ? h('span', { class: 'chip info', style: 'margin-left:7px' }, '⇄') : null),
         h('div', { class: 'small dim' }, day.title),
@@ -228,6 +230,6 @@ export function renderWeek(pid, weekNum, rerender) {
           fmtDate(date), store.day(day.id, pid)?.auto ? ' · assumed done' : '') : null),
       h('div', { class: 'faint' }, '›'),
     ));
-  }
+  });
   return container;
 }

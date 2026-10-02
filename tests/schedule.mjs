@@ -97,5 +97,52 @@ function anchorAt(days, anchorDay = 'w1d1') {
   eq('custom map: state is active', sched.programStatus('p15').state, 'active');
 }
 
+// --- free arrangement: any session on any day, week starts on any day ------
+// Re:Zero, starting TODAY with Lower A (slot 7) as Day 1, the pull day (slot 4)
+// as Day 2, then Lower B (3), Upper A (1), and the three rest days.
+{
+  const comp = await import('../js/completion.js');
+  const prog = await import('../js/program.js');
+  const today = new Date();
+  const wd = today.getDay();
+  const order = [7, 4, 3, 1, 2, 5, 6];             // your Day 1..7, as session slots
+  const map = {};
+  order.forEach((slot, p) => { map[slot] = (wd + p) % 7; });
+  store.update((s) => {
+    s.activeProgram = 'rz';
+    const b = s.programs.rz;
+    b.started = true;
+    b.days = {};
+    b.setup.dayMap = map;
+    b.setup.weekStart = wd;
+    b.setup.anchorDay = 'w1d7';                     // Lower A
+    b.setup.anchorDate = iso(today);
+  });
+  const tomorrow = new Date(today.getTime() + DAY);
+  const day7 = new Date(today.getTime() + 6 * DAY);
+  const next = new Date(today.getTime() + 7 * DAY);
+
+  eq('arranged: today is Lower A', sched.todayId(today, 'rz'), 'w1d7');
+  eq('arranged: today is Day 1 of week 1', sched.todayIndexRaw(today, 'rz'), 0);
+  eq('arranged: tomorrow is the pull day', sched.todayId(tomorrow, 'rz'), 'w1d4');
+  eq('arranged: the 7th day is still week 1', sched.todayIndexRaw(day7, 'rz'), 6);
+  eq('arranged: a week later is week 2 Day 1', sched.todayId(next, 'rz'), 'w2d7');
+  eq('arranged: Lower A is dated today', iso(sched.dateForId('w1d7', 'rz')), iso(today));
+  eq('arranged: the pull day is dated tomorrow', iso(sched.dateForId('w1d4', 'rz')), iso(tomorrow));
+  eq('arranged: nothing is "behind" on day one',
+    sched.todayIndex(today, 'rz') - comp.firstOpenIndex('rz'), 0);
+  eq('arranged: the week lists in YOUR order',
+    sched.weekIdsInOrder(1, 'rz').join(','), 'w1d7,w1d4,w1d3,w1d1,w1d2,w1d5,w1d6');
+  const end = sched.programStatus('rz', today).endDate;
+  eq('arranged: the program ends the day before your start weekday',
+    end.getDay(), (wd + 6) % 7);
+  eq('arranged: index ↔ id round-trips for every day',
+    Array.from({ length: prog.totalDays('rz') }, (_, i) => sched.idToIndex(sched.indexToId(i, 'rz'), 'rz') === i)
+      .every(Boolean), true);
+  // the same session across a phase is still the same SESSION, whatever its day
+  eq('arranged: phase scope follows the session, not the position',
+    comp.dayIdsForScope('rz', 'w1d7', 'phase').join(','), 'w1d7,w2d7,w3d7,w4d7');
+}
+
 if (fails === 0) console.log('✓ All schedule checks passed');
 else { console.error(`✗ ${fails} schedule check(s) failed`); process.exit(1); }

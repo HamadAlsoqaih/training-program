@@ -5,7 +5,7 @@
 // Progress page shows — and the raw day records, so the file is readable by
 // anything later and can still be imported back into the app.
 // ============================================================================
-import { getProgram, totalDays, totalWeeks, EX, displayName } from './program.js';
+import { getProgram, getDay, totalDays, totalWeeks, EX } from './program.js';
 import * as store from './state.js';
 import { historyIndex, dayProgress, weekProgress, bestWeight } from './completion.js';
 import { indexToId, dateForIndex, dateForId, toISO, deloadBlocks } from './schedule.js';
@@ -36,14 +36,14 @@ export function buildProgramReport(pid) {
   }
 
   for (let i = 0; i < n; i++) {
-    const id = indexToId(i);
+    const id = indexToId(i, pid);
     const rec = days[id];
     const p = dayProgress(pid, id);
     const w = Math.floor(i / 7);
     if (p.status === 'done') { daysDone++; streak++; longestStreak = Math.max(longestStreak, streak); }
     else if (p.status === 'skipped') { daysSkipped++; streak = 0; }
     else streak = 0;
-    if ((i % 7) + 1 !== 7) cardioTotal++;
+    if (getDay(pid, id)?.kind !== 'off') cardioTotal++;
     if (rec?.cardioDone) { cardio++; weekly[w].cardioSessions++; }
     if (rec?.elapsedMs && !rec.auto) { gymMs += rec.elapsedMs; weekly[w].gymTimeMin += Math.round(rec.elapsedMs / 60000); }
     if (rec?.note) notes.push({ dayId: id, date: isoOrNull(dateForIndex(i, pid)), note: rec.note });
@@ -116,6 +116,7 @@ export function buildProgramReport(pid) {
       startDate: isoOrNull(dateForIndex(0, pid)),
       endDate: isoOrNull(dateForIndex(n - 1, pid)),
       dayMap: bucket.setup.dayMap || program.defaultDayMap || null,
+      weekStartsOn: bucket.setup.weekStart ?? null,
       deloadWeeksInserted: deloadBlocks(pid).map((b) => ({ beforeWeek: b.week, deloadDays: 8 - b.d0 })),
     },
     summary: {

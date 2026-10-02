@@ -9,10 +9,10 @@
 import { h, toast } from '../util.js';
 import * as store from '../state.js';
 import { seedBefore } from '../completion.js';
-import { PROGRAM_LIST, getProgram, daySlotsFor } from '../program.js';
+import { PROGRAM_LIST, getProgram, getWeek, daySlotsFor } from '../program.js';
 import {
   idToIndex, toISO, DEFAULT_DAY_MAP, WEEKDAY_NAMES, dayMap, todayIndex, currentWeek,
-  fmtDate, realToday,
+  fmtDate, realToday, weekStartWd,
 } from '../schedule.js';
 import { whereAmISheet } from './sheets.js';
 
@@ -22,70 +22,88 @@ export const ACCENTS = [
   ['#10b981', 'Green'], ['#84cc16', 'Lime'], ['#e5e7eb', 'White'],
 ];
 
-// --- weekday mapper (shared by start flow and settings) ---------------------
-function dayMapEditor(pid, initial, onChange) {
-  const map = { ...initial };
-  const selects = {};
+// --- your week (shared by the start flow and settings) ---------------------
+// Rows are YOUR days in order, starting on whatever weekday you choose. Each
+// row picks which session happens that day, so you can arrange the program
+// however you like; picking a session that's already used swaps the two, so
+// the week can never end up with a session twice. Change the start day and the
+// whole arrangement moves with it, keeping your order.
+function dayMapEditor(pid, initialMap, initialWeekStart, onChange) {
   const slots = daySlotsFor(pid);
-  const warn = h('div', { class: 'banner behind', style: 'display:none;margin-top:8px' },
-    'Each weekday can only be used once — fix the duplicates.');
+  const kinds = getWeek(pid, 1)?.days.map((d) => d.kind) || [];
+  let weekStart = initialWeekStart ?? initialMap[1];
+  // order[p] = the session slot (1..7) on position p
+  const order = Array.from({ length: 7 }, (_, p) => {
+    for (let d = 1; d <= 7; d++) if ((initialMap[d] - weekStart + 7) % 7 === p) return d;
+    return p + 1;
+  });
 
-  const validate = () => {
-    const used = Object.values(map);
-    const ok = new Set(used).size === 7;
-    warn.style.display = ok ? 'none' : '';
-    for (let d = 1; d <= 7; d++) {
-      selects[d].style.borderColor = used.filter((w) => w === map[d]).length > 1 ? 'var(--bad)' : '';
-    }
-    onChange?.(map, ok);
-    return ok;
-  };
+  const startSel = h('select', { class: 'sel', style: 'width:132px;height:42px;font-size:14px' },
+    ...WEEKDAY_NAMES.map((n, wd) => h('option', { value: wd, selected: weekStart === wd }, n)));
+  const labels = [], selects = [];
+  const hint = h('div', { class: 'tiny', style: 'display:none;margin-top:8px;color:var(--warn)' });
 
-  // Pick the weekday Day 1 lands on and the rest follow automatically, keeping
-  // the program's own spacing between sessions. Every day stays editable below.
-  const day1Sel = h('select', { class: 'sel', style: 'width:132px;height:42px;font-size:14px' },
-    ...WEEKDAY_NAMES.map((n, wd) => h('option', { value: wd, selected: map[1] === wd }, n)));
-  const rotateTo = (wd) => {
-    const base = map[1];
-    const offset = {};
-    for (let d = 1; d <= 7; d++) offset[d] = (map[d] - base + 7) % 7;
-    for (let d = 1; d <= 7; d++) {
-      map[d] = (wd + offset[d]) % 7;
-      if (selects[d]) selects[d].value = String(map[d]);
-    }
-    day1Sel.value = String(wd);
-    validate();
+  const getMap = () => {
+    const m = {};
+    order.forEach((d, p) => { m[d] = (weekStart + p) % 7; });
+    return m;
   };
-  day1Sel.addEventListener('change', () => rotateTo(+day1Sel.value));
+  const refresh = () => {
+    for (let p = 0; p < 7; p++) {
+      labels[p].firstChild.textContent = `${WEEKDAY_NAMES[(weekStart + p) % 7]}`;
+      selects[p].value = String(order[p]);
+    }
+    startSel.value = String(weekStart);
+    // two of the same hard session back to back (wrapping into next week)
+    const hard = new Set(['upper', 'strength', 'plyo']);
+    const clash = [];
+    for (let p = 0; p < 7; p++) {
+      const a = kinds[order[p] - 1], b = kinds[order[(p + 1) % 7] - 1];
+      if (a && a === b && hard.has(a)) {
+        clash.push(`${WEEKDAY_NAMES[(weekStart + p) % 7]} → ${WEEKDAY_NAMES[(weekStart + p + 1) % 7]}`);
+      }
+    }
+    hint.style.display = clash.length ? '' : 'none';
+    hint.textContent = clash.length
+      ? `Heads up: same kind of session on back-to-back days (${clash.join(', ')}). The program spaces these apart on purpose.`
+      : '';
+    onChange?.(getMap(), true);
+  };
+  const rotateTo = (wd) => { weekStart = wd; refresh(); };
+  startSel.addEventListener('change', () => rotateTo(+startSel.value));
+
   const head = h('div', { class: 'row', style: 'padding:2px 0 10px;border-bottom:1px solid var(--line);margin-bottom:6px' },
     h('div', { class: 'grow' },
-      h('div', { class: 'small', style: 'font-weight:800' }, 'Day 1 falls on'),
-      h('div', { class: 'tiny faint' }, 'the rest shift with it — change any day below')),
-    h('button', {
-      class: 'btn sm', style: 'margin-right:8px',
-      onclick: () => rotateTo(new Date().getDay()),
-    }, 'Today'),
-    day1Sel);
+      h('div', { class: 'small', style: 'font-weight:800' }, 'Week starts on'),
+      h('div', { class: 'tiny faint' }, 'your first day — the week ends the day before')),
+    h('button', { class: 'btn sm', style: 'margin-right:8px', onclick: () => rotateTo(new Date().getDay()) }, 'Today'),
+    startSel);
 
   const rows = [];
-  for (let d = 1; d <= 7; d++) {
-    const sel = h('select', { class: 'sel', style: 'width:132px;height:42px;font-size:14px' },
-      ...WEEKDAY_NAMES.map((n, wd) => h('option', { value: wd, selected: map[d] === wd }, n)));
+  for (let p = 0; p < 7; p++) {
+    const lab = h('div', { class: 'grow' },
+      h('div', { class: 'small', style: 'font-weight:700' }, ''),
+      h('div', { class: 'tiny faint' }, `Day ${p + 1}`));
+    const sel = h('select', { class: 'sel', style: 'max-width:190px;height:42px;font-size:13px' },
+      ...slots.map((label, i) => h('option', { value: i + 1 }, label)));
     sel.addEventListener('change', () => {
-      map[d] = +sel.value;
-      if (d === 1) day1Sel.value = sel.value;
-      validate();
+      const d = +sel.value;
+      const q = order.indexOf(d);
+      order[q] = order[p];       // swap, so every session is used exactly once
+      order[p] = d;
+      refresh();
     });
-    selects[d] = sel;
-    rows.push(h('div', { class: 'row', style: 'padding:5px 0' },
-      h('div', { class: 'grow' },
-        h('div', { class: 'small', style: 'font-weight:700' }, `Day ${d}`),
-        h('div', { class: 'tiny faint' }, slots[d - 1])),
-      sel));
+    labels.push(lab); selects.push(sel);
+    rows.push(h('div', { class: 'row', style: 'padding:5px 0;gap:8px' }, lab, sel));
   }
-  const el = h('div', {}, head, ...rows, warn);
-  setTimeout(validate, 0);
-  return { el, getMap: () => ({ ...map }), rotateTo, isValid: () => new Set(Object.values(map)).size === 7 };
+  const el = h('div', {}, head, ...rows, hint);
+  setTimeout(refresh, 0);
+  return {
+    el, getMap, rotateTo,
+    getWeekStart: () => weekStart,
+    slotAt: (p) => order[p],          // which session is on position p
+    isValid: () => new Set(order).size === 7,
+  };
 }
 
 const progOfWeekdayIn = (map, wd) => {
@@ -113,15 +131,17 @@ export function renderStart(pid, onDone) {
   let mapper;
   let dateTouched = false;   // once you type a date, nothing may overwrite it
 
+  // "Day N" here is YOUR Nth day of the week, in the order you arranged.
+  const wdOfPos = (n) => (mapper.getWeekStart() + n - 1) % 7;
   const rebuildDays = () => {
-    const m = mapper.getMap();
     const cur = +daySel.value || 1;
     daySel.replaceChildren(...Array.from({ length: 7 }, (_, i) =>
-      h('option', { value: i + 1, selected: i + 1 === cur }, `Day ${i + 1} — ${WEEKDAY_NAMES[m[i + 1]]}`)));
+      h('option', { value: i + 1, selected: i + 1 === cur }, `Day ${i + 1} — ${WEEKDAY_NAMES[wdOfPos(i + 1)]}`)));
   };
   const syncDayFromDate = () => {
     const [y, mo, d] = (dateIn.value || toISO(today)).split('-').map(Number);
-    daySel.value = progOfWeekdayIn(mapper.getMap(), new Date(y, mo - 1, d, 12).getDay());
+    const wd = new Date(y, mo - 1, d, 12).getDay();
+    daySel.value = String(((wd - mapper.getWeekStart() + 7) % 7) + 1);
   };
   // If you picked the day, move the date FORWARD to the next matching weekday —
   // never backwards, and never past a date you typed yourself. (Snapping
@@ -129,7 +149,7 @@ export function renderStart(pid, onDone) {
   // past and made the app think the wrong day was "today".)
   const syncDateFromDay = () => {
     if (dateTouched) return;                       // your date wins, always
-    const target = mapper.getMap()[+daySel.value];
+    const target = wdOfPos(+daySel.value);
     const [y, mo, d] = (dateIn.value || toISO(today)).split('-').map(Number);
     const cur = new Date(y, mo - 1, d, 12);
     const shift = (target - cur.getDay() + 7) % 7; // forward only
@@ -143,7 +163,8 @@ export function renderStart(pid, onDone) {
     const chosen = new Date(y, mo - 1, d, 12);
     const now = realToday(pid);
     const diff = Math.round((chosen - now) / 86400000);
-    const wdOk = chosen.getDay() === mapper.getMap()[dayN];
+    const wdOk = chosen.getDay() === wdOfPos(dayN);
+    const session = daySlotsFor(pid)[mapper.slotAt(dayN - 1) - 1];
 
     let when;
     if (diff > 0) when = `Starts <b>${fmtDate(chosen)}</b> — in ${diff} day${diff === 1 ? '' : 's'}.`;
@@ -151,12 +172,13 @@ export function renderStart(pid, onDone) {
     else when = `Anchored to <b>${fmtDate(chosen)}</b>, ${-diff} day${diff === -1 ? '' : 's'} ago — today lands later in the program.`;
 
     preview.innerHTML =
-      `${when}<br>That date is <b>Week ${week} · Day ${dayN} (${WEEKDAY_NAMES[mapper.getMap()[dayN]]})</b> — ${daySlotsFor(pid)[dayN - 1]}.`
-      + (wdOk ? '' : `<br><b>Heads up:</b> ${fmtDate(chosen)} is a ${WEEKDAY_NAMES[chosen.getDay()]}, but Day ${dayN} is your ${WEEKDAY_NAMES[mapper.getMap()[dayN]]}. Pick the matching day or change the date.`)
+      `${when}<br>That date is <b>Week ${week} · Day ${dayN} (${WEEKDAY_NAMES[wdOfPos(dayN)]})</b> — ${session}.`
+      + (wdOk ? '' : `<br><b>Heads up:</b> ${fmtDate(chosen)} is a ${WEEKDAY_NAMES[chosen.getDay()]}, but Day ${dayN} is your ${WEEKDAY_NAMES[wdOfPos(dayN)]}. Pick the matching day or change the date.`)
       + (seedTgl.checked && (week > 1 || dayN > 1) ? '<br>Everything before it will be marked <b>done (assumed)</b>.' : '');
   };
 
   mapper = dayMapEditor(pid, bucket.setup.dayMap || program.defaultDayMap || DEFAULT_DAY_MAP,
+    bucket.setup.weekStart,
     () => { rebuildDays(); syncDayFromDate(); updatePreview(); });
   rebuildDays(); syncDayFromDate();
   weekSel.addEventListener('change', updatePreview);
@@ -173,9 +195,9 @@ export function renderStart(pid, onDone) {
         first ? 'Your training programs, tracked on your phone.' : program.subtitle),
     ),
     h('div', { class: 'card' },
-      h('div', { class: 'h2', style: 'margin-bottom:6px' }, '🗓 Your training weekdays'),
+      h('div', { class: 'h2', style: 'margin-bottom:6px' }, '🗓 Your week'),
       h('div', { class: 'small dim', style: 'margin-bottom:8px' },
-        'Match each program day to your real weekday — the app always shows the workout that belongs to today.'),
+        'Pick the day your week starts, then which session goes on each day — any order you like. The app always shows the workout that belongs to today.'),
       mapper.el,
     ),
     h('div', { class: 'card' },
@@ -213,17 +235,18 @@ export function renderStart(pid, onDone) {
       class: 'btn primary block', style: 'margin-top:8px;min-height:54px',
       onclick: () => {
         if (!mapper.isValid()) { toast('Fix the duplicate weekdays first'); return; }
-        const anchorDay = `w${weekSel.value}d${daySel.value}`;
+        const anchorDay = `w${weekSel.value}d${mapper.slotAt(+daySel.value - 1)}`;
         store.update((s) => {
           const b = s.programs[pid];
           b.started = true;
           b.startedAt = b.startedAt || Date.now();
-          b.setup = { ...b.setup, anchorDate: dateIn.value || toISO(today), anchorDay, dayMap: mapper.getMap() };
+          b.setup = { ...b.setup, anchorDate: dateIn.value || toISO(today), anchorDay,
+            dayMap: mapper.getMap(), weekStart: mapper.getWeekStart() };
           s.activeProgram = pid;
           s.onboarded = true;
           if (s.session && s.session.pid !== pid) s.session = null;
         });
-        if (seedTgl.checked) seedBefore(pid, idToIndex(anchorDay));
+        if (seedTgl.checked) seedBefore(pid, idToIndex(anchorDay, pid));
         onDone();
       },
     }, bucket.started ? 'Save schedule →' : 'Start training →'),
@@ -251,7 +274,7 @@ export function renderSettings(rerender) {
       h('label', { class: 'switch' }, input, h('span', { class: 'knob' })));
   };
 
-  const mapper = dayMapEditor(pid, dayMap(pid), () => {});
+  const mapper = dayMapEditor(pid, dayMap(pid), weekStartWd(pid), () => {});
   const rollSel = h('select', {
     class: 'sel',
     onchange: () => { store.update((st) => { st.programs[pid].setup.rolloverHour = +rollSel.value; }); toast('Rollover updated'); },
@@ -336,7 +359,10 @@ export function renderSettings(rerender) {
         class: 'btn block', style: 'margin-top:10px',
         onclick: () => {
           if (!mapper.isValid()) { toast('Fix the duplicate weekdays first'); return; }
-          store.update((st) => { st.programs[pid].setup.dayMap = mapper.getMap(); });
+          store.update((st) => {
+            st.programs[pid].setup.dayMap = mapper.getMap();
+            st.programs[pid].setup.weekStart = mapper.getWeekStart();
+          });
           toast('Weekdays updated'); rerender();
         },
       }, 'Save weekdays'),

@@ -10,6 +10,12 @@
 // A late-night rollover hour (default 4 AM) keeps 1 AM sessions on the
 // previous day. One-off swaps can exchange two day-slots for a single week.
 //
+// A program index is a CALENDAR POSITION: (week - 1) * 7 + p, where p = 0 is
+// the weekday your week starts on. Which session sits at each position comes
+// from your arrangement, so you can put any session on any day and start the
+// week on any weekday — and "before today" always means earlier in real time.
+// A day id ("w3d7") names the session's CONTENT and never changes meaning.
+//
 // Inserted deload weeks live HERE and nowhere else. A deload is one extra
 // CALENDAR week slot spliced in ahead of the week you are in; program indices
 // never move, so nothing renumbers and no completion total changes. Two spaces
@@ -36,12 +42,6 @@ export const DEFAULT_DAY_MAP = { 1: 3, 2: 4, 3: 5, 4: 6, 5: 0, 6: 1, 7: 2 }; // 
 export const WEEKDAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const DAY_MS = 24 * 3600 * 1000;
 
-// null for anything that is not a program day id (a deload id, or junk)
-export const idToIndex = (dayId) => {
-  const m = /^w(\d+)d([1-7])$/.exec(dayId || '');
-  return m ? (+m[1] - 1) * 7 + (+m[2] - 1) : null;
-};
-export const indexToId = (i) => `w${Math.floor(i / 7) + 1}d${(i % 7) + 1}`;
 export const clampIndex = (i, pid = activePid()) =>
   Math.max(0, Math.min(totalDays(pid) - 1, i));
 
@@ -84,12 +84,40 @@ export const isSwapped = (week, progDay, pid = activePid()) =>
 export const weekdayName = (progDay, week, pid = activePid()) =>
   WEEKDAY_NAMES[(week ? mapForWeek(week, pid) : dayMap(pid))[progDay]];
 
-// days after this program week's Day-1 weekday (standing map — swaps never
-// move week boundaries)
-const dowOffset = (date, pid) => (date.getDay() - weekdayOfProg(1, pid) + 7) % 7;
+// The weekday your week starts on. Older saves never set it, so it falls back
+// to Day 1's weekday — exactly how the app behaved before.
+export const weekStartWd = (pid = activePid()) => setupOf(pid).weekStart ?? dayMap(pid)[1];
+
+// position in the week (0 = start day) ↔ session slot (1..7)
+const posOfSlot = (d, week, pid) =>
+  ((week ? mapForWeek(week, pid) : dayMap(pid))[d] - weekStartWd(pid) + 7) % 7;
+const slotAtPos = (p, week, pid) => {
+  const m = week ? mapForWeek(week, pid) : dayMap(pid);
+  const ws = weekStartWd(pid);
+  for (let d = 1; d <= 7; d++) if ((m[d] - ws + 7) % 7 === p) return d;
+  return p + 1;
+};
+
+// day id ↔ program index. null for anything that isn't a program day id.
+export const idToIndex = (dayId, pid = activePid()) => {
+  const m = /^w(\d+)d([1-7])$/.exec(dayId || '');
+  if (!m) return null;
+  const week = +m[1];
+  return (week - 1) * 7 + posOfSlot(+m[2], week, pid);
+};
+export const indexToId = (i, pid = activePid()) => {
+  const week = Math.floor(i / 7) + 1;
+  return `w${week}d${slotAtPos(((i % 7) + 7) % 7, week, pid)}`;
+};
+
+// the seven content ids of a week, in calendar order
+export const weekIdsInOrder = (week, pid = activePid()) =>
+  Array.from({ length: 7 }, (_, p) => `w${week}d${slotAtPos(p, week, pid)}`);
+// the weekday a position falls on
+export const weekdayOfPos = (p, pid = activePid()) => (weekStartWd(pid) + p) % 7;
+
+const dowOffset = (date, pid) => (date.getDay() - weekStartWd(pid) + 7) % 7;
 const weekStartOf = (date, pid) => new Date(date.getTime() - dowOffset(date, pid) * DAY_MS);
-const progOffset = (progDay, week, pid) =>
-  ((week ? mapForWeek(week, pid) : dayMap(pid))[progDay] - weekdayOfProg(1, pid) + 7) % 7;
 
 // --- today ------------------------------------------------------------------
 // The calendar slot today lands on, before any program/deload interpretation.
@@ -97,11 +125,10 @@ function calToday(now = new Date(), pid = activePid()) {
   const { anchorDate, anchorDay } = setupOf(pid);
   if (!anchorDate) return 0;
   const anchor = parseISO(anchorDate);
-  const anchorIdx = idToIndex(anchorDay) ?? 0;
+  const anchorIdx = idToIndex(anchorDay, pid) ?? 0;
   const eff = effectiveDate(now, pid);
   const weeksElapsed = Math.round((weekStartOf(eff, pid) - weekStartOf(anchor, pid)) / (7 * DAY_MS));
-  const week = Math.floor(anchorIdx / 7) + weeksElapsed + 1;
-  return (week - 1) * 7 + (progOfWeekdayIn(mapForWeek(week, pid), eff.getDay()) - 1);
+  return (Math.floor(anchorIdx / 7) + weeksElapsed) * 7 + dowOffset(eff, pid);
 }
 
 // Everything today: which program day is due, and whether a deload is running.
@@ -129,7 +156,7 @@ export function todayIndexRaw(now = new Date(), pid = activePid()) {
 export const todayIndex = (now, pid = activePid()) => clampIndex(todayIndexRaw(now, pid), pid);
 export function todayId(now, pid = activePid()) {
   const slot = todaySlot(pid, now);
-  return slot.deload ? slot.deload.id : indexToId(clampIndex(slot.index, pid));
+  return slot.deload ? slot.deload.id : indexToId(clampIndex(slot.index, pid), pid);
 }
 // Days that have actually come due. During a deload nothing new has, so this
 // stops at the day before the week being replayed — adherence must not dip
@@ -169,22 +196,22 @@ export const currentWeek = (pid = activePid()) =>
   Math.min(totalWeeks(pid), Math.floor(todayIndex(undefined, pid) / 7) + 1);
 
 // --- dates ------------------------------------------------------------------
-// A calendar slot's real date. `swapWeek` is the program week whose one-off
-// day swaps apply — null for a deload slot, which uses the standing map.
-function dateForCal(c, pid = activePid(), swapWeek = null) {
+// A calendar slot's real date. Indices are positions, so the date is simply
+// the week's start day plus the position — no weekday lookup needed.
+function dateForCal(c, pid = activePid()) {
   const { anchorDate, anchorDay } = setupOf(pid);
   if (!anchorDate) return null;
   const anchor = parseISO(anchorDate);
-  const anchorIdx = idToIndex(anchorDay) ?? 0;
+  const anchorIdx = idToIndex(anchorDay, pid) ?? 0;
   const weekDelta = Math.floor(c / 7) - Math.floor(anchorIdx / 7);
   return new Date(weekStartOf(anchor, pid).getTime()
-    + (weekDelta * 7 + progOffset((c % 7) + 1, swapWeek, pid)) * DAY_MS);
+    + (weekDelta * 7 + (((c % 7) + 7) % 7)) * DAY_MS);
 }
 
-// Program index → date. Signature unchanged: every caller shifts for free once
-// a deload is inserted, because calIndexOf() moves the whole week along.
+// Program index → date. Every caller shifts for free once a deload is inserted,
+// because calIndexOf() moves the whole week along.
 export function dateForIndex(i, pid = activePid()) {
-  return dateForCal(calIndexOf(i, pid), pid, Math.floor(i / 7) + 1);
+  return dateForCal(calIndexOf(i, pid), pid);
 }
 
 // Works for both id shapes.
@@ -193,9 +220,9 @@ export function dateForId(id, pid = activePid()) {
   if (k) {
     const b = deloadBlock(k.block, pid);
     if (!b) return null;
-    return dateForCal(blockCalStart(b, pid) + (k.d - 1), pid, null);
+    return dateForCal(blockCalStart(b, pid) + (k.d - 1), pid);
   }
-  const i = idToIndex(id);
+  const i = idToIndex(id, pid);
   return i == null ? null : dateForIndex(i, pid);
 }
 // --- walking the calendar ----------------------------------------------------
@@ -207,14 +234,14 @@ export function calIndexOfDayId(pid, dayId) {
     const b = deloadBlock(k.block, pid);
     return b ? blockCalStart(b, pid) + (k.d - 1) : 0;
   }
-  const i = idToIndex(dayId);
+  const i = idToIndex(dayId, pid);
   return i == null ? 0 : calIndexOf(i, pid);
 }
 
 export function dayIdAtCal(pid, c) {
   const slot = slotAtCal(c, pid);
   if (slot.kind === 'deload') return deloadDayId(slot.block.id, slot.d);
-  return indexToId(clampIndex(slot.index, pid));
+  return indexToId(clampIndex(slot.index, pid), pid);
 }
 
 // The last calendar slot the program occupies (deload weeks included).
@@ -224,7 +251,7 @@ export const lastCalIndex = (pid = activePid()) => calIndexOf(totalDays(pid) - 1
 export const timeForDayId = (pid, dayId) => {
   const d = dateForId(dayId, pid);
   if (d) return d.getTime();
-  const i = idToIndex(dayId);
+  const i = idToIndex(dayId, pid);
   return (i ?? 0) * DAY_MS;
 };
 

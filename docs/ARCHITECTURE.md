@@ -141,6 +141,14 @@ had *all working sets* done and weight-logged. Warm-ups are excluded.
 `exId@prescribedValue`. When the program itself progresses a duration the key
 changes, so the new prescription automatically wins.
 
+**A program index is a calendar position.** `index = (week - 1) * 7 + p`, where
+`p = 0` is the weekday your week starts on (`setup.weekStart`, falling back to
+Day 1's weekday). `idToIndex` / `indexToId` translate between a position and the
+day id of the session sitting there, using your arrangement — so any session
+can be on any day, and every "before today" comparison is real-time order. Day
+ids (`w3d7`) name *content* and never change meaning; `dayIdsForScope` reads the
+slot from the id, and deload blocks freeze `slots[]` at insert time.
+
 **An inserted deload is a calendar-space shift, never a content change.**
 `js/deload.js` holds the blocks — `{ id, week, at, d0 }` — and the two index
 spaces: a *program index* (0…totalDays-1, never moves) and a *calendar index*

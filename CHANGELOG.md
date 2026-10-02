@@ -4,6 +4,31 @@ Every version of this app, from the first build to today. Newest first.
 
 ---
 
+## v12 — Arrange your week however you like
+
+- The week editor is now **your days in order**: pick the weekday your week
+  starts on, then which session goes on each day. Any session on any day, in
+  any order — Lower A first on Friday, the pull day second, and so on. Picking a
+  session that's already placed swaps the two, so nothing is ever doubled.
+- **Your first day really is the start of the week.** The week no longer begins
+  on the program's own "Day 1": it begins on the day you chose and ends the day
+  before, and the program finishes on that same weekday twelve weeks later.
+- Starting mid-arrangement can no longer report you as "behind": a program
+  index is now a calendar position, so "before today" always means earlier in
+  real time — the banner, adherence, streaks, the heatmap and the seed toggle
+  all follow your order. Day ids still name the session's content, so history,
+  phase-wide edits and inserted deload weeks keep pointing at the right session.
+- The week view and the "This week" sheet list days in your order, numbered
+  Day 1…7 from your start day. The heatmap's columns are headed by the weekday
+  each position falls on, and rest days are read off the day itself rather than
+  assumed to be Day 7.
+- A soft warning appears if your arrangement puts the same kind of hard session
+  on back-to-back days, since the programs space those apart on purpose.
+- Existing schedules are untouched: with no start day saved, the week starts on
+  the program's Day 1 exactly as before.
+
+---
+
 ## v11 — Start any program on any day, and finish it properly
 
 **Pick the weekday Day 1 lands on — for every program**

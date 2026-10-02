@@ -18,8 +18,8 @@ import {
   isLiveDay, dayProgress, insertDeload, deloadPlanFor,
 } from '../completion.js';
 import {
-  dateForId, fmtDate, weekdayName, progOfWeekday, toISO, idToIndex, todayIndex,
-  WEEKDAY_NAMES, weekSwaps, currentWeek, todaySlot, todayId, deloadDayId,
+  dateForId, fmtDate, weekdayName, progOfWeekday, toISO, idToIndex, indexToId, todayIndex,
+  WEEKDAY_NAMES, weekSwaps, currentWeek, todaySlot, todayId, deloadDayId, weekIdsInOrder,
 } from '../schedule.js';
 import { fmtMs } from '../timers.js';
 import { lineChart } from '../charts.js';
@@ -248,7 +248,7 @@ export function whereAmISheet(pid, onDone) {
             setup.anchorDate = toISO(effNoon);
             setup.anchorDay = anchorDay;
           });
-          if (seedTgl.checked) seedBefore(pid, idToIndex(anchorDay));
+          if (seedTgl.checked) seedBefore(pid, idToIndex(anchorDay, pid));
           closeSheet();
           toast(`You're on Week ${weekSel.value} · ${WEEKDAY_NAMES[effNoon.getDay()]}`);
           onDone?.();
@@ -397,7 +397,8 @@ export function weekOverviewSheet(pid, rerender) {
   const todayIdNow = todayId(undefined, pid);
 
   const ids = [];
-  for (let d = 1; d <= 7; d++) ids.push(block ? deloadDayId(block.id, d) : `w${week}d${d}`);
+  if (block) for (let d = 1; d <= 7; d++) ids.push(deloadDayId(block.id, d));
+  else ids.push(...weekIdsInOrder(week, pid));
 
   const rows = ids.map((id, i) => {
     const day = getDay(pid, id);
@@ -422,7 +423,7 @@ export function weekOverviewSheet(pid, rerender) {
       statEl,
       h('div', { class: 'grow' },
         h('div', { style: 'font-weight:700;font-size:15px' },
-          `${weekdayName(d, block ? null : week, pid)}`,
+          `${date ? WEEKDAY_NAMES[date.getDay()] : weekdayName(day.d, block ? null : week, pid)}`,
           isToday ? h('span', { class: 'chip accent', style: 'margin-left:7px' }, 'today') : null,
           block && day.light ? h('span', { class: 'chip deload-chip', style: 'margin-left:7px' }, 'deload') : null),
         h('div', { class: 'small dim' }, summary),
@@ -443,9 +444,9 @@ export function weekOverviewSheet(pid, rerender) {
 export function deloadSheet(pid, rerender) {
   const plan = deloadPlanFor(pid);
   if (!plan) { toast('No week left to deload'); return; }
-  const first = dateForId(`w${plan.week}d${plan.d0}`, pid);
+  const first = dateForId(indexToId(plan.at + plan.d0 - 1, pid), pid);
   const moved = [];
-  for (let d = 1; d < plan.d0; d++) if (store.day(`w${plan.week}d${d}`, pid)) moved.push(d);
+  for (let d = 1; d < plan.d0; d++) if (store.day(indexToId(plan.at + d - 1, pid), pid)) moved.push(d);
 
   openSheet(
     h('div', { class: 'h2', style: 'margin-bottom:2px' }, '🌙 Insert a deload week'),

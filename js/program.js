@@ -75,7 +75,10 @@ export function getDeloadDay(pid, dayId) {
   const key = `${pid}:${dayId}`;
   const hit = deloadCache.get(key);
   if (hit && hit.block === block) return hit.day;
-  const src = getDay(pid, `w${block.week}d${parts.d}`);
+  // position → session, as frozen when the block was inserted (older blocks
+  // predate free arrangement, where position and slot were the same)
+  const slot = block.slots ? block.slots[parts.d - 1] : parts.d;
+  const src = getDay(pid, `w${block.week}d${slot}`);
   if (!src) return null;
 
   const light = isDeloadSlot(block, parts.d);

@@ -84,8 +84,8 @@ one is active. Logged weights are shared, so your numbers carry across.
   the final day.
 
 **Settings**
-- **Day 1 on any weekday**: pick it and the rest of the week follows, for any
-  program; one tap starts today as Day 1.
+- **Arrange your week**: pick the day it starts on and which session goes on
+  each day, in any order, for any program; one tap starts today as Day 1.
 - Active program switcher, per-program training weekdays and rollover hour,
   "Where are you now?" week fix, accent colour (11 swatches + custom),
   reminders, timer-override reset, JSON export/import, full reset.

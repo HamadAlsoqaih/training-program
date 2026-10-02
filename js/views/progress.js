@@ -8,7 +8,7 @@ import {
 } from '../program.js';
 import * as store from '../state.js';
 import { dayProgress, weekProgress, historyFor, plannedDay } from '../completion.js';
-import { todayIndex, elapsedIndex, indexToId, dateForId, fmtDate, weekdayName, currentWeek } from '../schedule.js';
+import { todayIndex, elapsedIndex, indexToId, dateForId, fmtDate, weekdayName, currentWeek, weekdayOfPos, WEEKDAY_NAMES } from '../schedule.js';
 import { fmtMs } from '../timers.js';
 import { lineChart, barChart } from '../charts.js';
 import { jumpVolumeByWeek, spikeCheck, freestyleBlocks, FREESTYLE } from '../analytics.js';
@@ -28,14 +28,15 @@ export function renderProgress(rerender) {
   let doneDays = 0, skippedDays = 0, cardioDone = 0, cardioTotal = 0, weeksDone = 0;
   const statuses = [];
   for (let i = 0; i < nDays; i++) {
-    const id = indexToId(i);
+    const id = indexToId(i, pid);
     const p = dayProgress(pid, id);
     const rec = store.day(id, pid);
     statuses.push({ i, id, p, rec });
     if (p.status === 'done') doneDays++;
     if (p.status === 'skipped') skippedDays++;
-    const d = (i % 7) + 1;
-    if (d !== 7 && i <= tIdx) {
+    // any day that isn't a full rest day expects cardio — read off the day
+    // itself, since with your own arrangement the rest day can sit anywhere
+    if (getDay(pid, id)?.kind !== 'off' && i <= tIdx) {
       cardioTotal++;
       if (rec?.auto || (rec && cardioTicked(pid, id, rec))) cardioDone++;
     }
@@ -292,7 +293,8 @@ function jumpVolumeCard() {
 // --- heatmap ------------------------------------------------------------------
 function heatmapCard(pid, statuses, tIdx, weeks) {
   const cells = [h('div')];
-  for (let d = 1; d <= 7; d++) cells.push(h('div', { class: 'wk', style: 'justify-content:center' }, weekdayName(d, null, pid)[0]));
+  // columns are calendar positions — headed by the weekday each one falls on
+  for (let d = 1; d <= 7; d++) cells.push(h('div', { class: 'wk', style: 'justify-content:center' }, WEEKDAY_NAMES[weekdayOfPos(d - 1, pid)][0]));
   for (let w = 1; w <= weeks; w++) {
     cells.push(h('div', { class: 'wk' }, `${w}`));
     for (let d = 1; d <= 7; d++) {
@@ -302,7 +304,7 @@ function heatmapCard(pid, statuses, tIdx, weeks) {
       if (x.p.status === 'done') cls += x.rec?.auto ? ' auto' : ' done';
       else if (x.p.status === 'skipped') { cls += ' skip'; glyph = '×'; }
       else if (x.p.pct > 0) { cls += ' part'; glyph = '◐'; }
-      if (d === 7 && !x.p.status) cls += ' rest';
+      if (getDay(pid, x.id)?.kind === 'off' && !x.p.status) cls += ' rest';
       if (i === tIdx) cls += ' today';
       cells.push(h('a', {
         class: cls, href: `#/day/${pid}/${x.id}`,

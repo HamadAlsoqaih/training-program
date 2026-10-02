@@ -27,7 +27,7 @@ import {
   idToIndex, indexToId, clampIndex, todayId, todayIndex, dateForId, fmtDate,
   weekdayName, isSwapped, programStatus, realToday, toISO,
   todaySlot, isDeloadId, deloadIdParts, deloadBlock, deloadLength, deloadDayId,
-  calIndexOfDayId, dayIdAtCal, lastCalIndex, currentWeek,
+  calIndexOfDayId, dayIdAtCal, lastCalIndex, currentWeek, WEEKDAY_NAMES,
 } from '../schedule.js';
 import {
   startSession, pauseSession, resumeSession, finishSession, sessionElapsedMs,
@@ -76,7 +76,7 @@ export function renderDay(pid, dayId, rerender) {
   const dl = deloadIdParts(dayId);
   const block = dl ? deloadBlock(dl.block, pid) : null;
   const srcWeek = day.week ?? block?.week ?? 1;
-  const index = dl ? (block?.at ?? 0) : idToIndex(dayId);
+  const index = dl ? (block?.at ?? 0) : idToIndex(dayId, pid);
   const week = getWeek(pid, srcWeek);
   const sessionActive = s.session?.dayId === dayId && s.session?.pid === pid;
   const date = isActive ? dateForId(dayId, pid) : null;
@@ -98,7 +98,7 @@ export function renderDay(pid, dayId, rerender) {
       }, '‹'),
       h('div', { class: 'center grow' },
         h('a', { class: 'h1', style: 'display:block', href: `#/week/${pid}/${srcWeek}` },
-          dl ? `Deload · ${weekdayName(dl.d, null, pid)}`
+          dl ? `Deload · ${dateForId(dayId, pid) ? WEEKDAY_NAMES[dateForId(dayId, pid).getDay()] : weekdayName(day.d, null, pid)}`
              : `Week ${day.week} · ${weekdayName(day.d, day.week, pid)}`),
         h('div', { class: 'row', style: 'justify-content:center;gap:6px;margin-top:4px;flex-wrap:wrap' },
           h('span', { class: 'chip', style: `color:${week.phase.color};border-color:${week.phase.color}44` },
@@ -153,8 +153,8 @@ export function renderDay(pid, dayId, rerender) {
     if (behind > 0) {
       container.append(h('div', { class: 'banner behind' },
         `You're ${behind} day${behind > 1 ? 's' : ''} behind schedule — first open day: `,
-        h('a', { href: `#/day/${pid}/${indexToId(firstOpenIndex(pid))}`, style: 'text-decoration:underline;font-weight:800' },
-          labelFor(pid, indexToId(firstOpenIndex(pid)))),
+        h('a', { href: `#/day/${pid}/${indexToId(firstOpenIndex(pid), pid)}`, style: 'text-decoration:underline;font-weight:800' },
+          labelFor(pid, indexToId(firstOpenIndex(pid), pid))),
       ));
     }
   }

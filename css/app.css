@@ -160,7 +160,23 @@ svg { display: block; }
   letter-spacing: .08em; text-transform: uppercase; color: var(--faint);
 }
 .section-title .count { font-weight: 600; letter-spacing: 0; text-transform: none; }
+/* the heading itself folds the section away */
+.sectoggle {
+  display: flex; align-items: center; gap: 8px;
+  font: inherit; color: inherit; letter-spacing: inherit; text-transform: inherit;
+  background: none; border: 0; padding: 4px 0; min-height: 32px; text-align: left;
+}
+.sectoggle .chev { font-size: 11px; width: 10px; color: var(--dim); }
+.section-title.folded { color: var(--dim); }
+.section-title.folded::after { opacity: .5; }
 .section-title::after { content: ""; flex: 1; height: 1px; background: var(--line); order: 5; }
+.set.skipped {
+  opacity: .5; border-style: dashed;
+  background: var(--card2); color: var(--faint);
+}
+.set.skipped .lbl { text-decoration: none; }
+.iconbtn.on { background: var(--accent-soft); color: var(--accent); border-color: var(--accent-line); }
+
 .secall {
   order: 9; flex-shrink: 0;
   font-size: 11px; font-weight: 800; letter-spacing: .04em;

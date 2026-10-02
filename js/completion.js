@@ -126,7 +126,7 @@ function buildHistoryIndex() {
         let doneCount = 0, wsDone = 0;
         for (let si = 0; si < e.sets; si++) {
           const x = raw[si];
-          if (!x || (!x.done && x.weight == null)) continue;
+          if (!x || x.skipped || (!x.done && x.weight == null)) continue;
           sets.push({ ...x, i: si });
           if (x.done) { doneCount++; if (si >= e.wu) wsDone++; }
         }
@@ -226,8 +226,34 @@ export function exerciseSetsDone(pid, dayId, entry) {
   for (let i = 0; i < entry.sets; i++) if (ex.sets?.[i]?.done) n++;
   return n;
 }
+// A set you deliberately skipped is settled, the same as a set you did — it
+// just doesn't count as work. An exercise is finished when every set is settled.
+export function exerciseSetsSkipped(pid, dayId, entry) {
+  const ex = store.day(dayId, pid)?.ex?.[entry.key];
+  if (!ex) return 0;
+  let n = 0;
+  for (let i = 0; i < entry.sets; i++) if (ex.sets?.[i]?.skipped) n++;
+  return n;
+}
 export const exerciseDone = (pid, dayId, entry) =>
-  exerciseSetsDone(pid, dayId, entry) >= entry.sets;
+  exerciseSetsDone(pid, dayId, entry) + exerciseSetsSkipped(pid, dayId, entry) >= entry.sets;
+
+// Skip (or un-skip) a single set. Skipping clears anything logged on it, so a
+// skipped set can never show up as volume or as a last-session number.
+export function toggleSkipSet(pid, dayId, entry, setIdx) {
+  let skipped = false;
+  store.update((s) => {
+    const d = dayRec(s, pid, dayId);
+    clearAssumed(d);
+    const ex = exRec(d, entry.key);
+    const set = ex.sets[setIdx] || (ex.sets[setIdx] = {});
+    skipped = !set.skipped;
+    if (skipped) { set.skipped = true; delete set.done; }
+    else delete set.skipped;
+    maybeCompleteDay(s, pid, dayId);
+  });
+  return skipped;
+}
 
 export function dayProgress(pid, dayId) {
   const rec = store.day(dayId, pid);
@@ -311,6 +337,7 @@ export function toggleSet(pid, dayId, entry, setIdx, extras = {}) {
       if (d.status === 'done') { d.status = null; delete d.finishedAt; }
     } else {
       ex.sets[setIdx] = { ...(cur || {}), done: true, ...extras, loggedAt: Date.now() };
+      delete ex.sets[setIdx].skipped;        // ticking a set un-skips it
       d.lastLoggedAt = Date.now();
       justCompleted = maybeCompleteDay(s, pid, dayId);
     }

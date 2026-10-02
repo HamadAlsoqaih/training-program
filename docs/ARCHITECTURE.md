@@ -17,6 +17,7 @@ js/
   programs/p15.js       15-Week Program definition
   programs/p12.js       12-Week Vert Code definition (exports its shared blocks)
   programs/p12plus.js   12-Week+ — reuses p12's plyo/core/cooldown blocks
+  programs/rezero.js    Re:Zero — 4-day upper/lower, 3 lower phases, VO2 day
   state.js              localStorage store, schema v2 + migration, export/import
   schedule.js           calendar ↔ program-day mapping, weekday map, swaps
   completion.js         planned days, history index, completion cascade, edits
@@ -113,6 +114,12 @@ day behaves consistently everywhere.
 any day with a running session. Live days save immediately at day scope with no
 prompt. Other days offer day-or-phase; phase scope writes the same override to
 that day-slot across the phase's weeks, skipping days already completed.
+
+**A skipped set is settled, not done.** `exerciseDone()` counts done *plus*
+skipped sets against the prescription, so an exercise finishes without the set
+you skipped, while `exerciseSetsDone()` — the number every statistic uses —
+still counts only real work. `buildHistoryIndex()` drops skipped sets outright,
+so they can never become volume, a PR or a last-session number.
 
 **Completion cascade.** A set is done when ticked; an exercise when all its sets
 are; a day when every required (non-optional, non-skipped) exercise is; a week

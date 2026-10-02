@@ -130,6 +130,33 @@ export const EX = {
   knee_hug:          { name: 'Knee Hug', mux: 'Qj2WyHoUKwBd6G99lFv8beXOdtT3f01LqEjEhAV701khw' },
   lb_angels:         { name: 'Lower Back Angels', mux: 'PJEZR3YiVmGjwzomjD1mEf00CA15aLU028zeZOluXztec', yq: 'lower back angels exercise' },
   supine_kickover:   { name: 'Supine Kick Over', mux: 'qEV9LkskTTmA8vy00ZQQE85UZ01nZkYeDu029o9J1uk301g', yq: 'supine kick over mobility' },
+  // --- Re:Zero upper body ---
+  lat_pulldown:      { name: 'Lat Pulldown', note: 'Neutral grip', yq: 'neutral grip lat pulldown' },
+  sa_cable_pulldown: { name: 'Single-Arm Cable Pulldown', yq: 'single arm cable pulldown' },
+  box_pushup:        { name: 'Box Push-Up', note: 'When 3×10 is clean, lower the box a step — until the floor', yq: 'box push up elevated' },
+  cable_lat_raise:   { name: 'Cable Lateral Raise', yq: 'cable lateral raise' },
+  // --- Re:Zero lower body ---
+  bike_warmup:       { name: 'Warm-Up — bike + dynamic', noload: true, note: '5 min bike, then the dynamic warm-up', yq: 'dynamic warm up lower body' },
+  snap_down:         { name: 'Snap-Down to Stick', note: 'Hold the landing 2 s, knees tracking over toes', yq: 'snap down to stick drill' },
+  drop_to_stick:     { name: 'Drop-to-Stick (low box)', note: 'Hold 2 s. A sloppy landing ends the set.', yq: 'drop to stick landing low box' },
+  pogos:             { name: 'Pogos (low height)', yq: 'pogo jumps ankle stiffness' },
+  accel_sprint:      { name: 'Acceleration Sprints', noload: true, note: 'Rest until you can repeat at full quality — about 1 min per 10 m', yq: 'acceleration sprint technique' },
+  jump_squat:        { name: 'Jump Squat', note: 'Bodyweight, then a light bar', yq: 'jump squat technique' },
+  rdl:               { name: 'RDL', note: '3 s down', yq: 'romanian deadlift technique' },
+  trap_bar_dl:       { name: 'Trap-Bar Deadlift', note: 'Only after 2 quiet weeks for the back', yq: 'trap bar deadlift technique' },
+  box_squat:         { name: 'Box Squat', note: '3 s down · about 80% of your latest Monday back squat, progressed separately', yq: 'box squat technique' },
+  back_squat:        { name: 'Back Squat', note: '3 s down · under 50 kg add 5 kg a session, from 50 kg add 2.5 kg', yq: 'back squat technique' },
+  box_jump:          { name: 'Box Jump', note: 'Land on the box, step down', yq: 'box jump land step down' },
+  spanish_squat:     { name: 'Spanish Squat or Wall Sit', yq: 'spanish squat knee' },
+  step_up:           { name: 'Step-Up', yq: 'step up technique' },
+  rfess:             { name: 'RFESS', yq: 'rear foot elevated split squat' },
+  back_ext:          { name: 'Back Extension', yq: 'back extension hyperextension' },
+  copenhagen:        { name: 'Copenhagen Plank (short lever)', yq: 'copenhagen plank short lever' },
+  // --- Re:Zero conditioning ---
+  vo2_warmup:        { name: 'VO2 Warm-Up', noload: true, note: 'Bike or rower — easy, building', yq: 'vo2 max warm up bike' },
+  vo2_interval:      { name: 'VO2 Interval', noload: true, note: '4 min at 90–95% of max heart rate, 3 min easy between', yq: '4x4 interval training vo2 max' },
+  vo2_cool:          { name: 'VO2 Cool-Down', noload: true, note: '5 min easy', yq: 'cool down after intervals' },
+  jump_test:         { name: 'Countermovement Jump Test', noload: true, note: 'iPhone Measure, best of 3', yq: 'countermovement jump test measure' },
   // --- Cardio ---
   incline_walk:      { name: 'Incline Walk', note: '7% incline · 4.5 km/h · treadmill', yq: 'incline treadmill walking benefits' },
 };

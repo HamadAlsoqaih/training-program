@@ -16,6 +16,7 @@ offline at the gym.
 | **15-Week Program** | 15 weeks · 4 phases | Volleyball strength, plyometrics & shoulder rehab |
 | **12-Week Vert Code** | 12 weeks · 4 phases | another program on the same weekly template |
 | **12-Week+** | 12 weeks · 4 phases | Plyo + strength day + push/pull twice a week + shoulder rehab |
+| **Re:Zero** | 12 weeks · 3 phases | 4-day upper/lower · push/pull + shoulder rehab · lower body tolerance → power |
 
 Each program brings its own weekday layout (12-Week+ runs Friday → Thursday) and
 keeps its own schedule and progress; the Today tab follows whichever
@@ -35,6 +36,10 @@ one is active. Logged weights are shared, so your numbers carry across.
 - **Hold a card and drag** to reorder, like any phone app (supersets move as one
   unit). **Skip a single exercise** straight from its card.
 - **📅 This week** shows all seven days at a glance — one line each, tap to open.
+- **Fold a section away** by tapping its heading; a section you finish folds
+  itself, and one button collapses or opens the lot.
+- **Hold a single set to skip it** — the exercise still completes without it,
+  and the skipped set never counts as volume.
 - **Insert a deload week** at any point: it starts today, runs to the end of the
   week, mirrors the same sessions at one set and ~60% weight, then the week
   replays in full. Nothing renumbers, and a banner suggests one when you've gone

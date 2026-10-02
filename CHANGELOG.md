@@ -4,6 +4,40 @@ Every version of this app, from the first build to today. Newest first.
 
 ---
 
+## v10 — Re:Zero, collapsible sections, per-set skip
+
+**Re:Zero**
+- A 4-day upper/lower split built around a knee and a back that need managing:
+  push/pull twice a week with the shoulder rehab block, two lower days, and the
+  PJF core/mobility block after each upper day. 12 weeks, 3 lower-body phases.
+- Saudi week, Saturday first: Sat Upper A (push + mini pull) → core, Sun rest,
+  Mon Lower B (squat focus) → cardio, Tue Upper B (pull + mini push) → core,
+  Wed rest — becoming the **VO2 max session from Phase 2** — Thu rest, Fri
+  Lower A (hinge focus) → cardio.
+- The lower days change shape by phase: RDL → trap bar, step-up → RFESS,
+  snap-down → drop-to-stick, sprints from Phase 2, jump squats in Phase 3.
+  The **countermovement jump test** appears at the end of weeks 4, 8 and 12.
+- Phase badges carry the entry criteria, so the app tells you what has to be
+  true before Phase 2 or Phase 3 rather than just moving you along.
+- Reps are shown as the top of each prescribed range with the range on the
+  card, matching the program's own double-progression rule.
+- Its core block for weeks 3–12 is the shared PJF source; weeks 1–2 are encoded
+  locally with PJF's week-1 Rocking Plank typo corrected to 3 sets.
+
+**Collapsible sections**
+- Tap any section heading to fold it away. A section you finish folds itself,
+  which is what keeps a 25-exercise day from turning into endless scrolling.
+- One button next to Organize collapses every section, or opens them all.
+
+**Skip a single set**
+- **Hold a set** to skip just that set — the whole-exercise skip is still on the
+  card. A skipped set is settled, so the exercise and the day still complete
+  without it, and it never counts as volume, a PR, or a last-session number.
+  Hold it again to put it back; ticking it also brings it back.
+- Organize mode shows an explicit ⤼ button per set for the same thing.
+
+---
+
 ## v9 — Third program: 12-Week+
 
 **12-Week+**

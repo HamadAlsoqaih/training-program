@@ -19,7 +19,7 @@ import {
   plannedDay, requiredEntries, exerciseDone, exerciseSetsDone, dayProgress,
   firstOpenIndex, lastSessionFor, overloadHint, historyFor, bestWeight, dayTime,
   toggleSet, setLog, markDay, setNote, completeSection, setExerciseField,
-  toggleSkipExercise, deleteSet, addSet, moveExercise, moveSection,
+  toggleSkipExercise, toggleSkipSet, deleteSet, addSet, moveExercise, moveSection,
   hasCustomPlan, resetDayPlan, setExerciseOrder,
   insertDeload, removeDeload, deloadPlanFor,
 } from '../completion.js';
@@ -42,6 +42,15 @@ import { openVideo } from '../video.js';
 import { makeSortable } from '../dragsort.js';
 
 let timerInterval = null;
+// Which sections are folded away. A section you finish folds itself — that is
+// what stops a 25-exercise day turning into endless scrolling — and any header
+// you tap remembers your choice for as long as you stay on the day.
+const folded = new Map();   // `${pid}:${dayId}:${si}` → boolean
+const foldKey = (pid, dayId, si) => `${pid}:${dayId}:${si}`;
+const isFolded = (pid, dayId, si, secDone) => {
+  const k = foldKey(pid, dayId, si);
+  return folded.has(k) ? folded.get(k) : secDone;
+};
 let organize = false;   // "organize day" mode — reveals reorder / delete / skip
 let organizeFor = null; // ...and it only applies to the day it was opened on
 
@@ -182,10 +191,22 @@ export function renderDay(pid, dayId, rerender) {
         resetDayPlan(pid, dayId); toast('Day reset'); rerender({ keepScroll: true });
       },
     }, '↺ Reset') : null,
+    h('button', {
+      class: 'btn sm',
+      onclick: () => {
+        // fold everything unless it is all folded already, in which case open up
+        const keys = planned.sections.map((b) => foldKey(pid, dayId, b.si));
+        const allShut = planned.sections.every((b, i) =>
+          folded.has(keys[i]) ? folded.get(keys[i])
+            : b.entries.every((e) => e.item.opt || e.skipped || exerciseDone(pid, dayId, e)));
+        for (const k of keys) folded.set(k, !allShut);
+        rerender({ keepScroll: true });
+      },
+    }, '⌃⌄'),
   ));
   if (organize) {
     container.append(h('div', { class: 'banner', style: 'margin-top:8px' },
-      'Hold any exercise card and drag it to reorder — that works any time, not just here. Organize mode adds: move whole sections, edit reps and timers, and add or delete sets.'));
+      'Hold any exercise card and drag it to reorder, hold a single set to skip just that set, and tap a section heading to fold it away — all of that works any time, not just here. Organize mode adds: move whole sections, edit reps and timers, and add or delete sets.'));
   }
 
   // ---- sections -----------------------------------------------------------
@@ -196,9 +217,14 @@ export function renderDay(pid, dayId, rerender) {
   planned.sections.forEach((block, pos) => {
     const { si, sec, entries } = block;
     const secDone = entries.every((e) => e.item.opt || e.skipped || exerciseDone(pid, dayId, e));
-    const head = h('div', { class: 'section-title', 'data-si': si },
+    const fold = isFolded(pid, dayId, si, secDone);
+    const toggle = h('button', { class: 'sectoggle' },
+      h('span', { class: 'chev' }, fold ? '▸' : '▾'),
       sec.title,
       h('span', { class: 'count' }, secDone ? ' ✓' : ` ${entries.length}`),
+    );
+    const head = h('div', { class: `section-title${fold ? ' folded' : ''}`, 'data-si': si },
+      toggle,
       organize ? h('span', { class: 'row', style: 'gap:4px;order:9' },
         h('button', { class: 'iconbtn', disabled: pos === 0, 'aria-label': 'Move section up',
           onclick: () => { moveSection(pid, dayId, si, -1); rerender({ keepScroll: true }); } }, '↑'),
@@ -244,6 +270,14 @@ export function renderDay(pid, dayId, rerender) {
         i++;
       }
     }
+    list.hidden = fold;
+    toggle.onclick = () => {
+      const next = !list.hidden;
+      list.hidden = next;
+      folded.set(foldKey(pid, dayId, si), next);
+      head.classList.toggle('folded', next);
+      toggle.querySelector('.chev').textContent = next ? '▸' : '▾';
+    };
     container.append(list);
 
     makeSortable(list, {
@@ -551,6 +585,7 @@ function setRow(ctx, entry, i, last, repsBased) {
   const isWU = sch.t === 'wuws' && i < entry.wu;
   const st = store.day(dayId, pid)?.ex?.[key]?.sets?.[i];
   const ticked = !!st?.done;
+  const setSkipped = !!st?.skipped;
   const label = sch.t === 'wuws'
     ? (isWU ? `WU${sch.wu > 1 ? i + 1 : ''}` : `WS${sch.ws > 1 ? i - entry.wu + 1 : ''}`)
     : `${i + 1}`;
@@ -564,10 +599,27 @@ function setRow(ctx, entry, i, last, repsBased) {
   });
   const saveLog = () => setLog(pid, dayId, entry, i, readInputs());
 
+  // Hold a set to skip just that set — the whole-exercise skip stays on the
+  // card. A skipped set is settled: the exercise can still finish without it.
+  let holdTimer = null, held = false;
+  const skipThisSet = () => {
+    const now = toggleSkipSet(pid, dayId, entry, i);
+    toast(now ? `Set ${i + 1} skipped` : `Set ${i + 1} back in`);
+    refreshCard(ctx, key);
+  };
   const tick = h('button', {
-    class: `set${isWU ? ' wu' : ''}${ticked ? ' on' : ''}`,
-    'aria-label': `${ex.name} set ${i + 1}`,
+    class: `set${isWU ? ' wu' : ''}${ticked ? ' on' : ''}${setSkipped ? ' skipped' : ''}`,
+    'aria-label': `${ex.name} set ${i + 1}${setSkipped ? ' (skipped)' : ''} — hold to skip`,
+    onpointerdown: () => {
+      held = false;
+      holdTimer = setTimeout(() => { held = true; skipThisSet(); }, 450);
+    },
+    onpointerup: () => clearTimeout(holdTimer),
+    onpointercancel: () => clearTimeout(holdTimer),
+    onpointerleave: () => clearTimeout(holdTimer),
     onclick: () => {
+      clearTimeout(holdTimer);
+      if (held) { held = false; return; }      // the hold already skipped it
       unlockAudio();
       const { dayJustCompleted } = toggleSet(pid, dayId, entry, i, repsBased ? readInputs() : {});
       const nowTicked = !ticked;
@@ -578,14 +630,16 @@ function setRow(ctx, entry, i, last, repsBased) {
       if (dayJustCompleted) { onDayCompleted(pid, dayId, rerender); return; }
       refreshCard(ctx, key);
     },
-  }, h('span', { class: 'lbl' }, ticked ? '✓' : label));
+  }, h('span', { class: 'lbl' }, setSkipped ? '⤼' : ticked ? '✓' : label));
 
   if (!repsBased) {
     return organize
-      ? h('div', { class: 'setrow' }, tick, h('button', {
-          class: 'iconbtn danger', 'aria-label': 'Delete set',
-          onclick: () => { deleteSet(pid, dayId, entry, i); refreshCard(ctx, key); },
-        }, '🗑'))
+      ? h('div', { class: 'setrow' }, tick,
+          h('button', { class: `iconbtn${setSkipped ? ' on' : ''}`, 'aria-label': 'Skip this set', onclick: skipThisSet }, '⤼'),
+          h('button', {
+            class: 'iconbtn danger', 'aria-label': 'Delete set',
+            onclick: () => { deleteSet(pid, dayId, entry, i); refreshCard(ctx, key); },
+          }, '🗑'))
       : tick;
   }
 
@@ -613,6 +667,10 @@ function setRow(ctx, entry, i, last, repsBased) {
 
   const row = h('div', { class: 'setrow' }, tick,
     h('div', { class: 'loginputs' }, step(-2.5), wIn, step(2.5), rIn, h('span', { class: 'unit' }, 'REPS')),
+    organize ? h('button', {
+      class: `iconbtn${setSkipped ? ' on' : ''}`, 'aria-label': 'Skip this set',
+      onclick: skipThisSet,
+    }, '⤼') : null,
     organize ? h('button', {
       class: 'iconbtn danger', 'aria-label': 'Delete set',
       onclick: () => { deleteSet(pid, dayId, entry, i); refreshCard(ctx, key); },

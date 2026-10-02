@@ -55,6 +55,77 @@ eq('p15 KB anti-rotation stays reps', sch(D('p15','w2d2'), 'bu_kb_hold'), '3×10
 }
 
 // ============================================================================
+console.log('— Re:Zero —');
+const Z = 'rz';
+eq('Re:Zero 12 weeks', totalWeeks(Z), 12);
+eq('Re:Zero has 3 phases', PROGRAMS[Z].phases.length, 3);
+eq('Re:Zero day 1 is Saturday', PROGRAMS[Z].defaultDayMap[1], 6);
+// weekly shape: 2 upper, 2 lower, 3 rest (Wed becomes VO2 from phase 2)
+eq('Re:Zero Sun is a rest day', D(Z,'w1d2').sections.length, 0);
+eq('Re:Zero Thu is a rest day', D(Z,'w1d6').sections.length, 0);
+eq('Re:Zero Wed rests in phase 1', D(Z,'w1d5').sections.length, 0);
+eq('Re:Zero Wed is VO2 from phase 2', !!find(D(Z,'w5d5'), 'vo2_interval'), true);
+eq('Re:Zero VO2 starts at 3 intervals', sch(D(Z,'w5d5'), 'vo2_interval'), '3×4:00');
+eq('Re:Zero VO2 goes to 4 in phase 3', sch(D(Z,'w9d5'), 'vo2_interval'), '4×4:00');
+// upper A — push with the mini pull supersetted in
+eq('Re:Zero Sat chest press', sch(D(Z,'w1d1'), 'chest_press'), '3×10');
+eq('Re:Zero Sat mini lat pulldown', sch(D(Z,'w1d1'), 'lat_pulldown'), '2×10');
+eq('Re:Zero Sat chest press ↔ lat pulldown supersetted',
+  find(D(Z,'w1d1'), 'chest_press').item.ss === find(D(Z,'w1d1'), 'lat_pulldown').item.ss, true);
+eq('Re:Zero Sat pec deck is on its own', find(D(Z,'w1d1'), 'pec_deck').item.ss, undefined);
+eq('Re:Zero Sat triceps first', sch(D(Z,'w1d1'), 'triceps'), '3×12');
+eq('Re:Zero Sat has rehab', !!find(D(Z,'w1d1'), 'bu_kb_press'), true);
+eq('Re:Zero rehab includes the banded complex', !!find(D(Z,'w1d1'), 'banded_complex'), true);
+eq('Re:Zero Sat has core', D(Z,'w1d1').sections.some((x) => x.tag === 'core'), true);
+// upper B — pull with the mini push
+eq('Re:Zero Tue low row', sch(D(Z,'w1d4'), 'low_row'), '3×10');
+eq('Re:Zero Tue mini chest press', sch(D(Z,'w1d4'), 'chest_press'), '2×10');
+eq('Re:Zero Tue single-arm pulldown is each side', find(D(Z,'w1d4'), 'sa_cable_pulldown').item.side, true);
+eq('Re:Zero Tue biceps first', sch(D(Z,'w1d4'), 'biceps'), '3×12');
+// lower A (Fri, hinge) across the three phases
+eq('Re:Zero P1 Fri uses the RDL', sch(D(Z,'w1d7'), 'rdl'), '3×8');
+eq('Re:Zero P2 Fri swaps to the trap bar', sch(D(Z,'w5d7'), 'trap_bar_dl'), '3×5');
+eq('Re:Zero P3 Fri trap bar 4 sets', sch(D(Z,'w9d7'), 'trap_bar_dl'), '4×5');
+eq('Re:Zero P1 Fri has no sprints', find(D(Z,'w1d7'), 'accel_sprint'), null);
+eq('Re:Zero P2 Fri sprints 4x10m', sch(D(Z,'w5d7'), 'accel_sprint'), '4×1');
+eq('Re:Zero P3 Fri sprints 5x20m', sch(D(Z,'w9d7'), 'accel_sprint'), '5×1');
+eq('Re:Zero jump squats only in P3', find(D(Z,'w5d7'), 'jump_squat'), null);
+eq('Re:Zero P3 Fri jump squat', sch(D(Z,'w9d7'), 'jump_squat'), '3×4');
+eq('Re:Zero P1/P2 snap-down', !!find(D(Z,'w1d7'), 'snap_down'), true);
+eq('Re:Zero P3 drops to the box', !!find(D(Z,'w9d7'), 'drop_to_stick'), true);
+eq('Re:Zero P1 pogos 3x10', sch(D(Z,'w1d7'), 'pogos'), '3×10');
+eq('Re:Zero P2 pogos 3x15', sch(D(Z,'w5d7'), 'pogos'), '3×15');
+eq('Re:Zero copenhagen is each side', find(D(Z,'w1d7'), 'copenhagen').item.side, true);
+eq('Re:Zero P1 copenhagen 2x20s', sch(D(Z,'w1d7'), 'copenhagen'), '2×0:20');
+eq('Re:Zero P3 copenhagen 2x30s', sch(D(Z,'w9d7'), 'copenhagen'), '2×0:30');
+eq('Re:Zero Fri ends on cardio', D(Z,'w1d7').sections.at(-1).tag, 'cardio');
+// lower B (Mon, squat)
+eq('Re:Zero back squat 4 sets', sch(D(Z,'w1d3'), 'back_squat'), '4×5');
+eq('Re:Zero back squat rest', rest(D(Z,'w1d3'), 'back_squat'), 150);
+eq('Re:Zero P1 box jump 3x3', sch(D(Z,'w1d3'), 'box_jump'), '3×3');
+eq('Re:Zero P2 box jump 4x3', sch(D(Z,'w5d3'), 'box_jump'), '4×3');
+eq('Re:Zero P1 uses the step-up', !!find(D(Z,'w1d3'), 'step_up'), true);
+eq('Re:Zero P2 swaps to RFESS', sch(D(Z,'w5d3'), 'rfess'), '3×8');
+eq('Re:Zero P3 RFESS 3x6', sch(D(Z,'w9d3'), 'rfess'), '3×6');
+eq('Re:Zero nordics P1 3x4', sch(D(Z,'w1d3'), 'nordics'), '3×4');
+eq('Re:Zero nordics P2 3x5', sch(D(Z,'w5d3'), 'nordics'), '3×5');
+// jump test lands at the end of weeks 4, 8 and 12 only
+eq('Re:Zero wk4 has the jump test', !!find(D(Z,'w4d7'), 'jump_test'), true);
+eq('Re:Zero wk8 has the jump test', !!find(D(Z,'w8d7'), 'jump_test'), true);
+eq('Re:Zero wk12 has the jump test', !!find(D(Z,'w12d7'), 'jump_test'), true);
+eq('Re:Zero wk3 has no jump test', find(D(Z,'w3d7'), 'jump_test'), null);
+// core follows PJF, and weeks 3-12 are literally the shared blocks
+eq('Re:Zero wk1 rocking plank is 3 sets (PJF typo corrected)', sch(D(Z,'w1d1'), 'rocking_plank'), '3×0:25');
+eq('Re:Zero wk2 hamstring floss', sch(D(Z,'w2d1'), 'ham_floss'), '3×7');
+eq('Re:Zero wk3 core matches the shared phase-2 block',
+  sch(D(Z,'w3d1'), 'splank_abd'), sch(D('p12','w3d2'), 'splank_abd'));
+eq('Re:Zero wk6 core matches the shared phase-3 block',
+  sch(D(Z,'w6d1'), 'hand_walkout'), sch(D('p12','w6d2'), 'hand_walkout'));
+eq('Re:Zero wk11 core matches the shared phase-4 block',
+  sch(D(Z,'w11d1'), 'leg_lowers'), sch(D('p12','w11d2'), 'leg_lowers'));
+eq('Re:Zero Sat and Tue share the core block',
+  sch(D(Z,'w6d1'), 'leg_climb'), sch(D(Z,'w6d4'), 'leg_climb'));
+
 console.log('— 12-Week+ —');
 const P = 'p12p';
 // weekly template: Fri plyo, Sat push, Sun plyo, Mon cardio, Tue pull, Wed strength, Thu rest

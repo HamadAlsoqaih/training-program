@@ -36,6 +36,7 @@ import {
 import {
   historySheet, noteSheet, skipSheet, summarySheet, durationSheet, textSheet,
   whereAmISheet, editExerciseSheet, deloadSheet, weekOverviewSheet,
+  programReportSheet, maybeCelebrateProgram,
 } from './sheets.js';
 import { deloadAdvice } from '../analytics.js';
 import { openVideo } from '../video.js';
@@ -329,6 +330,13 @@ export function renderProgramGate(pid, status, rerender) {
         ? 'Nothing to train yet — this program begins on that date and today\u2019s workout will appear here automatically.'
         : `The last day was ${fmtDate(status.endDate)}. Review it on the Progress tab, or start something new.`),
   ));
+
+  if (!before) {
+    wrap.append(h('button', {
+      class: 'btn primary block', style: 'min-height:52px',
+      onclick: () => programReportSheet(pid, { celebrate: true }),
+    }, '🏆 See how it went & export'));
+  }
 
   if (before) {
     wrap.append(h('button', {
@@ -830,7 +838,11 @@ function onDayCompleted(pid, dayId, rerender) {
     if (prevBest === null || todayW > prevBest) prs.push({ name: EX[e.item.ex].name, weight: todayW, prev: prevBest });
   }
   chime('done');
-  summarySheet({ pid, dayId, elapsed, setsDone, prs }, rerender);
+  // If that was the last day of the program, the finish screen follows the
+  // day summary rather than fighting it for the same sheet.
+  summarySheet({ pid, dayId, elapsed, setsDone, prs }, () => {
+    if (!maybeCelebrateProgram(pid, rerender)) rerender?.();
+  });
   maybeBackupNudge(pid, getDay(pid, dayId).week);
 }
 

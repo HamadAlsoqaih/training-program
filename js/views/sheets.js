@@ -24,6 +24,7 @@ import {
 import { fmtMs } from '../timers.js';
 import { lineChart } from '../charts.js';
 import { jumpContactsForDay } from '../analytics.js';
+import { buildProgramReport, downloadReport, programComplete } from '../report.js';
 import { openVideo } from '../video.js';
 
 const root = () => document.getElementById('sheet-root');
@@ -475,3 +476,67 @@ export function deloadSheet(pid, rerender) {
     h('button', { class: 'btn block', style: 'margin-top:8px', onclick: closeSheet }, 'Cancel'),
   );
 }
+
+// --- finished the program ----------------------------------------------------
+// Shown once when the last day closes, and reachable any time from Progress.
+export function programReportSheet(pid, { celebrate = false } = {}) {
+  const r = buildProgramReport(pid);
+  const sm = r.summary;
+  const stat = (v, k) => h('div', { class: 'stat' },
+    h('div', { class: 'v' }, String(v)), h('div', { class: 'k' }, k));
+
+  const top = celebrate
+    ? h('div', { class: 'center', style: 'padding:8px 0 4px' },
+        h('div', { class: 'confetti-pop', style: 'font-size:56px' }, '🏆'),
+        h('div', { class: 'h1', style: 'margin-top:6px' }, 'Program complete'),
+        h('div', { class: 'dim small' },
+          `${r.program.name} — all ${r.program.weeks} weeks done. That is the whole thing, start to finish.`))
+    : h('div', { style: 'padding:2px 0 4px' },
+        h('div', { class: 'h2' }, `${r.program.name} — your numbers`),
+        h('div', { class: 'tiny faint', style: 'margin-top:2px' },
+          `${r.schedule.startDate || '—'} → ${r.schedule.endDate || '—'}`));
+
+  const bests = r.personalBests.slice(0, 5);
+  const biggest = r.exercises.filter((e) => e.gainKg > 0).sort((a, b) => b.gainKg - a.gainKg).slice(0, 3);
+
+  openSheet(
+    top,
+    h('div', { class: 'statgrid', style: 'margin-top:14px' },
+      stat(`${sm.daysDone}/${sm.daysTotal}`, 'Days done'),
+      stat(`${sm.adherencePct}%`, 'Adherence'),
+      stat(sm.setsDone, 'Sets'),
+      stat(`${Math.round(sm.volumeKg / 1000)}t`, 'Volume lifted'),
+      stat(`${sm.gymTimeHours}h`, 'Gym time'),
+      stat(sm.jumpContacts, 'Jump contacts'),
+    ),
+    biggest.length ? h('div', { class: 'card', style: 'border-color:var(--accent-soft)' },
+      h('div', { class: 'small', style: 'font-weight:800;color:var(--accent);margin-bottom:4px' }, '📈 Biggest jumps'),
+      ...biggest.map((e) => h('div', { class: 'small dim' },
+        `${e.name}: `, h('b', {}, `${e.firstWeightKg} → ${e.lastWeightKg} kg`), ` (+${e.gainKg})`)),
+    ) : null,
+    bests.length ? h('div', { class: 'card' },
+      h('div', { class: 'small', style: 'font-weight:800;margin-bottom:4px' }, '🏋️ Heaviest lifts'),
+      ...bests.map((b) => h('div', { class: 'small dim' }, `${b.name}: `, h('b', {}, `${b.weightKg} kg`))),
+    ) : null,
+    h('button', {
+      class: 'btn primary block', style: 'margin-top:12px',
+      onclick: () => {
+        try { downloadReport(pid); toast('Exported'); }
+        catch { toast('Could not save the file'); }
+      },
+    }, '⬇ Export everything as JSON'),
+    h('div', { class: 'tiny faint', style: 'margin-top:6px;text-align:center' },
+      'Summary plus every logged set, note and check-in — readable anywhere, and importable back into the app.'),
+    h('button', { class: 'btn block', style: 'margin-top:10px', onclick: closeSheet }, 'Close'),
+  );
+}
+
+export const maybeCelebrateProgram = (pid, rerender) => {
+  if (!programComplete(pid)) return false;
+  const done = store.get().settings.celebrated || {};
+  if (done[pid]) return false;
+  store.update((s) => { s.settings.celebrated = { ...(s.settings.celebrated || {}), [pid]: Date.now() }; });
+  programReportSheet(pid, { celebrate: true });
+  rerender?.();
+  return true;
+};

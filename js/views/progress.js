@@ -12,7 +12,7 @@ import { todayIndex, elapsedIndex, indexToId, dateForId, fmtDate, weekdayName, c
 import { fmtMs } from '../timers.js';
 import { lineChart, barChart } from '../charts.js';
 import { jumpVolumeByWeek, spikeCheck, freestyleBlocks, FREESTYLE } from '../analytics.js';
-import { historySheet } from './sheets.js';
+import { historySheet, programReportSheet } from './sheets.js';
 
 export function renderProgress(rerender) {
   const pid = store.activePid();
@@ -143,6 +143,11 @@ export function renderProgress(rerender) {
       h('div', { class: 'chartwrap', html: barChart(weekly, { unit: 'sets' }) }),
     ));
   }
+
+  container.append(h('button', {
+    class: 'btn block', style: 'margin-top:14px',
+    onclick: () => programReportSheet(pid),
+  }, '⬇ Export this program — summary + all data'));
 
   const notes = statuses.filter((x) => x.rec?.note).reverse().slice(0, 20);
   if (notes.length) {

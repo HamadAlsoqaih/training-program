@@ -79,8 +79,13 @@ one is active. Logged weights are shared, so your numbers carry across.
   Freestyle cap adherence from your tapped blocks.
 - Phase timeline, full-program heatmap, duration / lift / volume charts.
 - Weekly fatigue check-in that surfaces the program's own reduce-cardio rule.
+- **Export a program** as one JSON file — summary plus every logged set, note
+  and check-in. A finish screen with the same export appears when you close
+  the final day.
 
 **Settings**
+- **Day 1 on any weekday**: pick it and the rest of the week follows, for any
+  program; one tap starts today as Day 1.
 - Active program switcher, per-program training weekdays and rollover hour,
   "Where are you now?" week fix, accent colour (11 swatches + custom),
   reminders, timer-override reset, JSON export/import, full reset.

@@ -24,6 +24,7 @@ js/
   registry.js           the program list (leaf module — keeps imports acyclic)
   deload.js             inserted deload weeks: program vs calendar index space
   analytics.js          jump volume by calendar week, spikes, deload advice
+  report.js             program report: computed summary + raw records, as JSON
   dragsort.js           hold-to-drag reordering (pointer events, transform only)
   timers.js             stopwatch, countdowns, chime, wake lock
   video.js              in-app HLS player (native on iOS, hls.js elsewhere)

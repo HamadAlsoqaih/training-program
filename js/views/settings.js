@@ -41,11 +41,41 @@ function dayMapEditor(pid, initial, onChange) {
     return ok;
   };
 
+  // Pick the weekday Day 1 lands on and the rest follow automatically, keeping
+  // the program's own spacing between sessions. Every day stays editable below.
+  const day1Sel = h('select', { class: 'sel', style: 'width:132px;height:42px;font-size:14px' },
+    ...WEEKDAY_NAMES.map((n, wd) => h('option', { value: wd, selected: map[1] === wd }, n)));
+  const rotateTo = (wd) => {
+    const base = map[1];
+    const offset = {};
+    for (let d = 1; d <= 7; d++) offset[d] = (map[d] - base + 7) % 7;
+    for (let d = 1; d <= 7; d++) {
+      map[d] = (wd + offset[d]) % 7;
+      if (selects[d]) selects[d].value = String(map[d]);
+    }
+    day1Sel.value = String(wd);
+    validate();
+  };
+  day1Sel.addEventListener('change', () => rotateTo(+day1Sel.value));
+  const head = h('div', { class: 'row', style: 'padding:2px 0 10px;border-bottom:1px solid var(--line);margin-bottom:6px' },
+    h('div', { class: 'grow' },
+      h('div', { class: 'small', style: 'font-weight:800' }, 'Day 1 falls on'),
+      h('div', { class: 'tiny faint' }, 'the rest shift with it — change any day below')),
+    h('button', {
+      class: 'btn sm', style: 'margin-right:8px',
+      onclick: () => rotateTo(new Date().getDay()),
+    }, 'Today'),
+    day1Sel);
+
   const rows = [];
   for (let d = 1; d <= 7; d++) {
     const sel = h('select', { class: 'sel', style: 'width:132px;height:42px;font-size:14px' },
       ...WEEKDAY_NAMES.map((n, wd) => h('option', { value: wd, selected: map[d] === wd }, n)));
-    sel.addEventListener('change', () => { map[d] = +sel.value; validate(); });
+    sel.addEventListener('change', () => {
+      map[d] = +sel.value;
+      if (d === 1) day1Sel.value = sel.value;
+      validate();
+    });
     selects[d] = sel;
     rows.push(h('div', { class: 'row', style: 'padding:5px 0' },
       h('div', { class: 'grow' },
@@ -53,9 +83,9 @@ function dayMapEditor(pid, initial, onChange) {
         h('div', { class: 'tiny faint' }, slots[d - 1])),
       sel));
   }
-  const el = h('div', {}, ...rows, warn);
+  const el = h('div', {}, head, ...rows, warn);
   setTimeout(validate, 0);
-  return { el, getMap: () => ({ ...map }), isValid: () => new Set(Object.values(map)).size === 7 };
+  return { el, getMap: () => ({ ...map }), rotateTo, isValid: () => new Set(Object.values(map)).size === 7 };
 }
 
 const progOfWeekdayIn = (map, wd) => {
@@ -126,7 +156,7 @@ export function renderStart(pid, onDone) {
       + (seedTgl.checked && (week > 1 || dayN > 1) ? '<br>Everything before it will be marked <b>done (assumed)</b>.' : '');
   };
 
-  mapper = dayMapEditor(pid, bucket.setup.dayMap || DEFAULT_DAY_MAP,
+  mapper = dayMapEditor(pid, bucket.setup.dayMap || program.defaultDayMap || DEFAULT_DAY_MAP,
     () => { rebuildDays(); syncDayFromDate(); updatePreview(); });
   rebuildDays(); syncDayFromDate();
   weekSel.addEventListener('change', updatePreview);
@@ -152,6 +182,20 @@ export function renderStart(pid, onDone) {
       h('div', { class: 'h2', style: 'margin-bottom:10px' }, '📍 Where are you starting?'),
       h('div', { class: 'small dim', style: 'margin-bottom:10px' },
         'Fresh start = Week 1 · Day 1. Already mid-program? Pick your current day and turn on the switch to mark everything before it as done.'),
+      h('button', {
+        class: 'btn sm block', style: 'margin-bottom:10px',
+        onclick: () => {
+          // Week 1 Day 1, today, with the whole week rotated to match.
+          mapper.rotateTo(realToday(pid).getDay());
+          weekSel.value = '1';
+          rebuildDays();
+          daySel.value = '1';
+          dateIn.value = toISO(realToday(pid));
+          dateTouched = true;
+          updatePreview();
+          toast('Day 1 is today');
+        },
+      }, '▶ Start today as Day 1'),
       h('div', { class: 'row', style: 'margin-bottom:8px' }, weekSel, daySel),
       h('div', { class: 'tiny faint', style: 'margin-bottom:4px' },
         'The real date that day falls on (a future date is fine — the app will count down to it):'),

@@ -4,6 +4,33 @@ Every version of this app, from the first build to today. Newest first.
 
 ---
 
+## v11 — Start any program on any day, and finish it properly
+
+**Pick the weekday Day 1 lands on — for every program**
+- The weekday mapper now opens with **"Day 1 falls on …"** and a **Today**
+  button. Move Day 1 and the other six days follow automatically, keeping the
+  program's own spacing between sessions intact. Every day stays individually
+  editable underneath, so you confirm or adjust whatever you like.
+- The start screen also has **▶ Start today as Day 1** — one tap sets the date
+  to today, Week 1 Day 1, and rotates the week to match.
+- **Fixed:** the start flow seeded the weekday mapper from the global default
+  rather than the program's own layout, so a program that ships its own week —
+  Re:Zero starting Saturday, 12-Week+ starting Friday — offered you Wednesday
+  while the rest of the app showed the right day.
+
+**Finishing a program**
+- Close the last day and a **Program complete** screen follows the usual
+  session summary: days done, adherence, total sets, tonnage, gym hours, jump
+  contacts, your biggest weight jumps and heaviest lifts.
+- It is not a one-shot — the finished-program screen keeps the button, and
+  **Progress has "Export this program"** at any point, not just at the end.
+- **Export is one JSON file** holding both a computed summary (everything the
+  Progress page shows, plus per-exercise bests, first-to-last gains, weekly
+  volume, fatigue check-ins and all your day notes) and the raw day records, so
+  it reads anywhere and imports back into the app. New `js/report.js`.
+
+---
+
 ## v10 — Re:Zero, collapsible sections, per-set skip
 
 **Re:Zero**

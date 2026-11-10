@@ -10,7 +10,7 @@
 import { h, toast } from '../util.js';
 import {
   EX, ytUrl, hasVideo, displayName, getDay, fmtSecs, schemeLabel,
-  nutritionFor, notesFor, getProgram, phaseOf,
+  nutritionFor, notesFor, getProgram, phaseOf, getWeek,
 } from '../program.js';
 import * as store from '../state.js';
 import {
@@ -20,6 +20,8 @@ import {
 import {
   dateForId, fmtDate, weekdayName, progOfWeekday, toISO, idToIndex, indexToId, todayIndex,
   WEEKDAY_NAMES, weekSwaps, currentWeek, todaySlot, todayId, deloadDayId, weekIdsInOrder,
+  mapForWeek, usualMapForWeek, saveWeekArrangement, clearWeekArrangement, isCustomWeek,
+  weekStartWd, dateForIndex, realToday,
 } from '../schedule.js';
 import { fmtMs } from '../timers.js';
 import { lineChart } from '../charts.js';
@@ -242,7 +244,10 @@ export function whereAmISheet(pid, onDone) {
       h('button', {
         class: 'btn primary grow',
         onclick: () => {
-          const anchorDay = `w${weekSel.value}d${progDay}`;
+          // the chosen week may be arranged differently from the usual week
+          const wm = mapForWeek(+weekSel.value, pid);
+          const slot = [1, 2, 3, 4, 5, 6, 7].find((d) => wm[d] === effNoon.getDay()) || progDay;
+          const anchorDay = `w${weekSel.value}d${slot}`;
           store.update((st) => {
             const setup = st.programs[pid].setup;
             setup.anchorDate = toISO(effNoon);
@@ -437,6 +442,10 @@ export function weekOverviewSheet(pid, rerender) {
     h('div', { class: 'tiny faint', style: 'margin-bottom:12px' },
       block ? `Then Week ${block.week} starts again from Day 1` : getProgram(pid).name),
     ...rows,
+    block ? null : h('button', {
+      class: 'btn block', style: 'margin-top:6px',
+      onclick: () => organizeWeekSheet(pid, week, rerender),
+    }, '🗓 Organize this week'),
   );
 }
 
@@ -541,3 +550,105 @@ export const maybeCelebrateProgram = (pid, rerender) => {
   rerender?.();
   return true;
 };
+
+// --- organize a week ------------------------------------------------------------
+// Your seven days in order. Tap one day, then another, to swap their sessions.
+// Days already gone and days with logged work are locked, so organizing never
+// rewrites what happened. Save asks: this week only, or every week from now?
+// Same-kind hard sessions on back-to-back days can't be saved.
+const HARD_KINDS = new Set(['upper', 'strength', 'plyo', 'lower']);
+const KIND_LABEL = { upper: 'Upper', lower: 'Lower', strength: 'Strength', plyo: 'Plyo', rest: 'Rest + cardio', off: 'Rest' };
+
+const logged = (rec) => !!rec && !rec.auto && (rec.status === 'done' || rec.status === 'skipped'
+  || Object.values(rec.ex || {}).some((x) => (x.sets || []).some((v) => v?.done)));
+
+export function organizeWeekSheet(pid, week, onDone) {
+  const wk = getWeek(pid, week);
+  if (!wk) return;
+  const ws = weekStartWd(pid);
+  const orderOf = (map) => Array.from({ length: 7 }, (_, p) => {
+    for (let d = 1; d <= 7; d++) if ((map[d] - ws + 7) % 7 === p) return d;
+    return p + 1;
+  });
+  const start = orderOf(mapForWeek(week, pid));
+  const order = start.slice();
+  const today = toISO(realToday(pid));
+  const dates = Array.from({ length: 7 }, (_, p) => dateForIndex((week - 1) * 7 + p, pid));
+  const locked = start.map((slot, p) => (dates[p] && toISO(dates[p]) < today)
+    || logged(store.day(`w${week}d${slot}`, pid)));
+  const dayOf = (slot) => wk.days[slot - 1];
+  const toMap = (o) => { const m = {}; o.forEach((slot, p) => { m[slot] = (ws + p) % 7; }); return m; };
+  let sel = null, asking = false;
+
+  const clashes = () => {
+    const out = [];
+    for (let p = 0; p < 6; p++) {
+      const a = dayOf(order[p]).kind, b = dayOf(order[p + 1]).kind;
+      if (a === b && HARD_KINDS.has(a)) out.push([p, p + 1, a]);
+    }
+    return out;
+  };
+  const body = h('div');
+  const draw = () => {
+    const bad = clashes();
+    const changed = order.some((x, p) => x !== start[p]);
+    const rows = order.map((slot, p) => {
+      const d = dayOf(slot);
+      const clash = bad.some(([a, b]) => a === p || b === p);
+      return h('button', {
+        class: `orgday${sel === p ? ' sel' : ''}${locked[p] ? ' locked' : ''}${clash ? ' clash' : ''}`,
+        disabled: locked[p] || asking,
+        onclick: () => {
+          if (sel === null) sel = p;
+          else if (sel === p) sel = null;
+          else { const t = order[sel]; order[sel] = order[p]; order[p] = t; sel = null; }
+          draw();
+        },
+      },
+        h('div', { class: 'orgwd' },
+          h('b', {}, WEEKDAY_NAMES[(ws + p) % 7].slice(0, 3)),
+          h('span', {}, dates[p] ? String(dates[p].getDate()) : '')),
+        h('div', { class: 'grow' },
+          h('div', { class: 'small', style: 'font-weight:700' }, d.title),
+          h('div', { class: 'tiny faint' }, KIND_LABEL[d.kind] || d.kind)),
+        locked[p] ? h('span', { 'aria-label': 'locked' }, '🔒') : sel === p ? h('span', { class: 'chip accent' }, 'move') : null,
+      );
+    });
+    const warn = bad.map(([a, b, k]) => h('div', { class: 'tiny', style: 'color:var(--warn);margin-top:6px' },
+      `⚠️ ${WEEKDAY_NAMES[(ws + a) % 7].slice(0, 3)} and ${WEEKDAY_NAMES[(ws + b) % 7].slice(0, 3)}: two ${(KIND_LABEL[k] || k).toLowerCase()} days in a row — the program spaces these apart.`));
+    const save = (scope) => {
+      saveWeekArrangement(pid, week, toMap(order), scope);
+      closeSheet();
+      toast(scope === 'week' ? `Saved for Week ${week} only` : `Saved — every week from Week ${week}`);
+      onDone?.();
+    };
+    body.replaceChildren(...[
+      h('div', { class: 'h2', style: 'margin-bottom:2px' }, `🗓 Organize Week ${week}`),
+      h('div', { class: 'tiny faint', style: 'margin-bottom:10px' },
+        sel === null ? 'Tap a day, then tap another day to swap them. 🔒 = done or already gone.'
+          : `Now tap the day to swap ${dayOf(order[sel]).title.split(/ [→+—]/)[0]} with.`),
+      ...rows,
+      ...warn,
+      asking
+        ? h('div', { class: 'card', style: 'margin-top:12px' },
+            h('div', { class: 'small', style: 'font-weight:700;margin-bottom:8px' }, 'Use this arrangement for…'),
+            h('div', { class: 'row', style: 'gap:8px' },
+              h('button', { class: 'btn grow', onclick: () => save('week') }, `Week ${week} only`),
+              h('button', { class: 'btn primary grow', onclick: () => save('every') }, 'Every week from now')),
+            h('button', { class: 'btn sm block', style: 'margin-top:8px', onclick: () => { asking = false; draw(); } }, 'Back'))
+        : h('div', { class: 'row', style: 'gap:8px;margin-top:14px;flex-wrap:wrap' },
+            isCustomWeek(week, pid) ? h('button', {
+              class: 'btn sm grow',
+              onclick: () => { clearWeekArrangement(pid, week); closeSheet(); toast(`Week ${week} back to your usual week`); onDone?.(); },
+            }, '↺ Usual week') : null,
+            h('button', { class: 'btn grow', onclick: closeSheet }, 'Cancel'),
+            h('button', {
+              class: 'btn primary grow', disabled: !changed || bad.length > 0,
+              onclick: () => { asking = true; sel = null; draw(); },
+            }, 'Save')),
+      bad.length ? h('div', { class: 'tiny faint', style: 'margin-top:6px' }, 'Fix the days marked above to save.') : null,
+    ].filter(Boolean));
+  };
+  draw();
+  openSheet(body);
+}

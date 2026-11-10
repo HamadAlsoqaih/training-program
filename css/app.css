@@ -597,3 +597,16 @@ body.video-open { overflow: hidden; }
 }
 .drag-lift .ex, .drag-lift.ex { transform: scale(1.02); }
 .ytlink.on { color: var(--bad); border-color: rgba(248,113,113,.4); background: var(--bad-dim); }
+
+/* --- organize week ---------------------------------------------------------- */
+.orgday {
+  display: flex; align-items: center; gap: 12px; width: 100%; text-align: left;
+  padding: 10px 12px; margin-bottom: 6px; border-radius: var(--r);
+  border: 1px solid var(--line); background: var(--card, rgba(255,255,255,.03)); color: inherit;
+}
+.orgday.sel { border-color: var(--accent); background: var(--accent-soft); }
+.orgday.clash { border-color: var(--warn); }
+.orgday.locked { opacity: .55; }
+.orgday .orgwd { display: flex; flex-direction: column; align-items: center; width: 36px; flex-shrink: 0; }
+.orgday .orgwd b { font-size: 13px; }
+.orgday .orgwd span { font-size: 11px; color: var(--faint); }

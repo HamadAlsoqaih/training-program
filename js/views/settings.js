@@ -12,7 +12,7 @@ import { seedBefore, clearEmptyDeloadsFrom } from '../completion.js';
 import { PROGRAM_LIST, getProgram, getWeek, daySlotsFor } from '../program.js';
 import {
   idToIndex, toISO, DEFAULT_DAY_MAP, WEEKDAY_NAMES, dayMap, todayIndex, currentWeek,
-  fmtDate, realToday, weekStartWd, deloadBlocks,
+  fmtDate, realToday, weekStartWd, deloadBlocks, saveWeekArrangement,
 } from '../schedule.js';
 import { whereAmISheet, openSheet, closeSheet } from './sheets.js';
 
@@ -276,6 +276,8 @@ export function renderStart(pid, onDone) {
           b.startedAt = b.startedAt || Date.now();
           b.setup = { ...b.setup, anchorDate: dateIn.value || toISO(today), anchorDay,
             dayMap: mapper.getMap(), weekStart: mapper.getWeekStart() };
+          // a fresh schedule: no per-week arrangements left over from before
+          delete b.setup.mapHistory; delete b.setup.weekMaps; delete b.setup.weekSwaps;
           s.activeProgram = pid;
           s.onboarded = true;
           if (s.session && s.session.pid !== pid) s.session = null;
@@ -412,9 +414,18 @@ export function renderSettings(rerender) {
         class: 'btn block', style: 'margin-top:10px',
         onclick: () => {
           if (!mapper.isValid()) { toast('Fix the duplicate weekdays first'); return; }
+          if (mapper.getWeekStart() === weekStartWd(pid) && store.prog(pid).setup.anchorDate) {
+            // Same week start: change the usual week from this week on, so the
+            // weeks you already trained keep their days.
+            saveWeekArrangement(pid, currentWeek(pid), mapper.getMap(), 'every');
+            toast(`Weekdays updated from Week ${currentWeek(pid)} on`); rerender(); return;
+          }
+          // A new week start moves the whole calendar, so it starts over clean.
           store.update((st) => {
-            st.programs[pid].setup.dayMap = mapper.getMap();
-            st.programs[pid].setup.weekStart = mapper.getWeekStart();
+            const su = st.programs[pid].setup;
+            su.dayMap = mapper.getMap();
+            su.weekStart = mapper.getWeekStart();
+            delete su.mapHistory; delete su.weekMaps; delete su.weekSwaps;
           });
           toast('Weekdays updated'); rerender();
         },

@@ -30,6 +30,8 @@ jobs:
         run: node tests/deload.mjs
       - name: Workout and backup fix checks
         run: node tests/fixes.mjs
+      - name: Week organizer checks
+        run: node tests/organize.mjs
 
   deploy:
     needs: test

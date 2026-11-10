@@ -8,9 +8,17 @@ import { weekProgress, dayProgress } from '../completion.js';
 import * as store from '../state.js';
 import {
   todayId, dateForId, fmtDate, weekdayName, isSwapped, currentWeek,
-  deloadBlocks, deloadDayId, deloadLength, weekIdsInOrder,
+  deloadBlocks, deloadDayId, deloadLength, weekIdsInOrder, isCustomWeek,
+  dateForIndex, realToday, toISO, programStatus,
 } from '../schedule.js';
-import { programNotesSheet, daySwapSheet } from './sheets.js';
+
+// A week can be organized while it still has a day ahead (active program only).
+export function canOrganize(pid, week) {
+  if (pid !== store.activePid() || programStatus(pid).state === 'over') return false;
+  const last = dateForIndex((week - 1) * 7 + 6, pid);
+  return !!last && toISO(last) >= toISO(realToday(pid));
+}
+import { programNotesSheet, organizeWeekSheet } from './sheets.js';
 
 const progressOf = (pid) => {
   let done = 0;
@@ -195,12 +203,20 @@ export function renderWeek(pid, weekNum, rerender) {
           h('span', { class: 'chip', style: `color:${phase.color};border-color:${phase.color}44` }, phase.name),
           h('span', { class: 'chip' }, program.name),
           wp.complete ? h('span', { class: 'chip good' }, '✓ week done') : null)),
-      h('button', { class: 'navbtn', 'aria-label': 'Swap days this week', style: 'font-size:15px',
-        onclick: () => daySwapSheet(pid, weekNum, rerender) }, '⇄'),
+      canOrganize(pid, weekNum)
+        ? h('button', { class: 'navbtn', 'aria-label': 'Organize this week', style: 'font-size:15px',
+            onclick: () => organizeWeekSheet(pid, weekNum, rerender) }, '🗓')
+        : h('span', { class: 'navbtn', style: 'visibility:hidden' }),
     ),
   );
   if (week.badge) {
     container.append(h('div', { class: `banner ${week.badge.includes('DELOAD') ? 'deload' : ''}` }, week.badge));
+  }
+  if (canOrganize(pid, weekNum) || isCustomWeek(weekNum, pid)) {
+    container.append(h('div', { class: 'row', style: 'gap:8px;margin-bottom:10px;flex-wrap:wrap' },
+      canOrganize(pid, weekNum) ? h('button', { class: 'btn sm grow', onclick: () => organizeWeekSheet(pid, weekNum, rerender) },
+        '🗓 Organize this week') : null,
+      isCustomWeek(weekNum, pid) ? h('span', { class: 'chip info' }, 'Custom week') : null));
   }
 
   // In calendar order, numbered by position — Day 1 is the day your week starts.

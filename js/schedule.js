@@ -25,7 +25,7 @@
 // calIndexOf() goes one way, slotAtCal() the other, and every date in the app
 // comes from dateForCal().
 // ============================================================================
-import { get, setupOf, activePid } from './state.js';
+import { get, setupOf, activePid, update } from './state.js';
 import { totalDays, totalWeeks, getProgram } from './program.js';
 import {
   deloadBlocks, deloadBlock, blockCalStart, calIndexOf, slotAtCal,
@@ -71,16 +71,69 @@ const progOfWeekdayIn = (m, wd) => {
 };
 export const progOfWeekday = (wd, pid = activePid()) => progOfWeekdayIn(dayMap(pid), wd);
 
+// Which session sits on which weekday can change over time without touching
+// weeks that already happened:
+//   setup.mapHistory = [ { from: week, map } ]  the usual week, from that week on
+//   setup.weekMaps   = { [week]: map }          one week arranged differently
+//   setup.weekSwaps  = { [week]: [[a,b]] }      older one-off swaps (still read)
+// With no history the current dayMap applies to every week, exactly as before.
 export const weekSwaps = (week, pid = activePid()) => setupOf(pid).weekSwaps?.[week] || [];
+export function usualMapForWeek(week, pid = activePid()) {
+  const hist = setupOf(pid).mapHistory;
+  if (!week || !hist?.length) return dayMap(pid);
+  let m = hist[0].map;
+  for (const h of hist) if (h.from <= week) m = h.map;
+  return m;
+}
 export function mapForWeek(week, pid = activePid()) {
+  const one = week && setupOf(pid).weekMaps?.[week];
+  if (one) return one;
+  const base = usualMapForWeek(week, pid);
   const swaps = weekSwaps(week, pid);
-  if (!swaps.length) return dayMap(pid);
-  const m = { ...dayMap(pid) };
+  if (!swaps.length) return base;
+  const m = { ...base };
   for (const [a, b] of swaps) { const t = m[a]; m[a] = m[b]; m[b] = t; }
   return m;
 }
 export const isSwapped = (week, progDay, pid = activePid()) =>
-  mapForWeek(week, pid)[progDay] !== dayMap(pid)[progDay];
+  mapForWeek(week, pid)[progDay] !== usualMapForWeek(week, pid)[progDay];
+export const isCustomWeek = (week, pid = activePid()) =>
+  !!setupOf(pid).weekMaps?.[week] || weekSwaps(week, pid).length > 0;
+
+const sameMap = (a, b) => [1, 2, 3, 4, 5, 6, 7].every((d) => a[d] === b[d]);
+
+// Arrange ONE week (week-only) or the usual week from `week` on (every week).
+// Earlier weeks keep the layout they really had.
+export function saveWeekArrangement(pid, week, map, scope /* 'week' | 'every' */) {
+  update((s) => {
+    const su = s.programs[pid].setup;
+    if (su.weekSwaps?.[week]) { delete su.weekSwaps[week]; }
+    su.weekMaps = { ...(su.weekMaps || {}) };
+    if (scope === 'week') {
+      if (sameMap(map, usualMapForWeek(week, pid))) delete su.weekMaps[week];
+      else su.weekMaps[week] = { ...map };
+      return;
+    }
+    // Older saves never stored the week start; it was read off the current map.
+    // Pin it before the map changes, or every week would slide to a new start.
+    if (su.weekStart == null) su.weekStart = weekStartWd(pid);
+    const hist = su.mapHistory?.length
+      ? su.mapHistory.slice()
+      : [{ from: 1, map: { ...(su.dayMap || getProgram(pid).defaultDayMap || DEFAULT_DAY_MAP) } }];
+    su.mapHistory = hist.filter((h) => h.from < week).concat([{ from: week, map: { ...map } }])
+      .sort((a, b) => a.from - b.from);
+    su.dayMap = { ...map };
+    delete su.weekMaps[week];
+  });
+}
+// Back to the usual week for one week.
+export function clearWeekArrangement(pid, week) {
+  update((s) => {
+    const su = s.programs[pid].setup;
+    if (su.weekMaps) delete su.weekMaps[week];
+    if (su.weekSwaps) delete su.weekSwaps[week];
+  });
+}
 export const weekdayName = (progDay, week, pid = activePid()) =>
   WEEKDAY_NAMES[(week ? mapForWeek(week, pid) : dayMap(pid))[progDay]];
 

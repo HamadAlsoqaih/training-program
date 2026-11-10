@@ -28,6 +28,7 @@ import { lineChart } from '../charts.js';
 import { jumpContactsForDay } from '../analytics.js';
 import { buildProgramReport, downloadReport, programComplete } from '../report.js';
 import { openVideo } from '../video.js';
+import { makeSwappable } from '../dragsort.js';
 
 const root = () => document.getElementById('sheet-root');
 
@@ -598,6 +599,7 @@ export function organizeWeekSheet(pid, week, onDone) {
       const clash = bad.some(([a, b]) => a === p || b === p);
       return h('button', {
         class: `orgday${sel === p ? ' sel' : ''}${locked[p] ? ' locked' : ''}${clash ? ' clash' : ''}`,
+        'data-pos': String(p),
         disabled: locked[p] || asking,
         onclick: () => {
           if (sel === null) sel = p;
@@ -626,7 +628,7 @@ export function organizeWeekSheet(pid, week, onDone) {
     body.replaceChildren(...[
       h('div', { class: 'h2', style: 'margin-bottom:2px' }, `🗓 Organize Week ${week}`),
       h('div', { class: 'tiny faint', style: 'margin-bottom:10px' },
-        sel === null ? 'Tap a day, then tap another day to swap them. 🔒 = done or already gone.'
+        sel === null ? 'Hold a day and drag it onto another to swap them — or tap one, then the other. 🔒 = done or already gone.'
           : `Now tap the day to swap ${dayOf(order[sel]).title.split(/ [→+—]/)[0]} with.`),
       ...rows,
       ...warn,
@@ -651,5 +653,12 @@ export function organizeWeekSheet(pid, week, onDone) {
     ].filter(Boolean));
   };
   draw();
-  openSheet(body);
+  const sheet = openSheet(body);
+
+  // hold a day, drag it onto another, let go: the two swap
+  makeSwappable(body, {
+    scroller: sheet,
+    enabled: () => !asking,
+    onSwap: (from, to) => { const t = order[from]; order[from] = order[to]; order[to] = t; sel = null; draw(); },
+  });
 }

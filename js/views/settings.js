@@ -15,6 +15,7 @@ import {
   fmtDate, realToday, weekStartWd, deloadBlocks, saveWeekArrangement,
 } from '../schedule.js';
 import { whereAmISheet, openSheet, closeSheet } from './sheets.js';
+import { makeSwappable } from '../dragsort.js';
 import {
   PUSH_OK, pushState, pushOn, pushOff, sendTest, reminderSync, trainingWeekdays, onPushChange,
 } from '../push.js';
@@ -125,6 +126,7 @@ function dayMapEditor(pid, initialMap, initialWeekStart, onChange) {
   setTimeout(refresh, 0);
   return {
     el, getMap, rotateTo,
+    swap: (a, b) => { const t = order[a]; order[a] = order[b]; order[b] = t; refresh(); },
     getWeekStart: () => weekStart,
     slotAt: (p) => order[p],          // which session is on position p
     isValid: () => new Set(order).size === 7,
@@ -163,6 +165,8 @@ export function renderStart(pid, onDone, { restart = false } = {}) {
     dateTouched = true; onDate();
   } }, label);
   const weekList = h('div', { class: 'weeklist' });
+  const clashNote = h('div', { class: 'tiny', style: 'color:var(--warn);margin-top:4px' });
+  const kinds = getWeek(pid, 1)?.days.map((d) => d.kind) || [];
   const easyTgl = h('input', { type: 'checkbox', onchange: () => { easy = easyTgl.checked; updatePreview(); } });
   const easyRow = h('label', { class: 'row', style: 'margin-top:12px;gap:10px;align-items:flex-start' },
     h('span', { class: 'switch' }, easyTgl, h('span', { class: 'knob' })),
@@ -202,9 +206,18 @@ export function renderStart(pid, onDone, { restart = false } = {}) {
     const dayN = partway ? +daySel.value : 1;
     const slots = daySlotsFor(pid);
     const ws = mapper.getWeekStart();
-    weekList.replaceChildren(...Array.from({ length: 7 }, (_, p) => h('div', { class: 'row tiny', style: 'padding:3px 0' },
-      h('b', { style: 'width:42px' }, WEEKDAY_NAMES[(ws + p) % 7].slice(0, 3)),
-      h('span', { class: 'grow dim' }, slots[mapper.slotAt(p) - 1]))));
+    weekList.replaceChildren(...Array.from({ length: 7 }, (_, p) => h('div', { class: 'weekrow2', 'data-pos': String(p) },
+      h('b', { class: 'wd' }, WEEKDAY_NAMES[(ws + p) % 7].slice(0, 3)),
+      h('span', { class: 'grow' }, slots[mapper.slotAt(p) - 1]),
+      h('span', { class: 'grip', 'aria-hidden': 'true' }, '⠿'))));
+    // same kind of hard session on back-to-back days (the programs space these apart)
+    const hard = new Set(['upper', 'strength', 'plyo', 'lower']);
+    const pairs = [];
+    for (let q = 0; q < 6; q++) {
+      const k1 = kinds[mapper.slotAt(q) - 1], k2 = kinds[mapper.slotAt(q + 1) - 1];
+      if (k1 && k1 === k2 && hard.has(k1)) pairs.push(`${WEEKDAY_NAMES[(ws + q) % 7].slice(0, 3)} → ${WEEKDAY_NAMES[(ws + q + 1) % 7].slice(0, 3)}`);
+    }
+    clashNote.textContent = pairs.length ? `⚠️ Same kind of session on back-to-back days (${pairs.join(', ')}). The program spaces these apart on purpose.` : '';
     const when = diff > 0 ? `<b>${fmtDate(chosen)}</b> — in ${diff} day${diff === 1 ? '' : 's'}`
       : diff === 0 ? `<b>today</b> (${fmtDate(chosen)})`
         : `<b>${fmtDate(chosen)}</b>, ${-diff} day${diff === -1 ? '' : 's'} ago`;
@@ -255,6 +268,8 @@ export function renderStart(pid, onDone, { restart = false } = {}) {
     else { weekSel.value = '1'; onDate(); }
     updatePreview();
   });
+  // hold a day in "Your week" and drag it onto another to swap their sessions
+  makeSwappable(weekList, { onSwap: (a, b) => mapper.swap(a, b) });
   mid.append(
     h('summary', { class: 'h2', style: 'font-size:15px;cursor:pointer' }, '📍 Already partway through this program?'),
     h('div', { class: 'small dim', style: 'margin:8px 0 10px' },
@@ -278,12 +293,30 @@ export function renderStart(pid, onDone, { restart = false } = {}) {
       h('div', { class: 'dim small', style: 'margin-top:6px' },
         first ? 'Your training programs, tracked on your phone.' : restart ? 'Start over from Week 1.' : program.subtitle),
     ),
+    // Starting something new (first run or a program not begun yet): pick it here.
+    !bucket.started ? h('div', { class: 'card' },
+      h('div', { class: 'h2', style: 'margin-bottom:8px' }, '🏋️ Choose your program'),
+      ...PROGRAM_LIST.map((p) => {
+        const on = p.id === pid;
+        const started = store.prog(p.id).started;
+        return h('button', {
+          class: `progpick${on ? ' on' : ''}`, 'aria-pressed': on ? 'true' : 'false',
+          onclick: () => { if (!on) location.hash = `#/start/${p.id}`; },
+        },
+          h('span', { class: 'progdot' }, on ? '✓' : ''),
+          h('span', { class: 'grow' },
+            h('span', { class: 'small', style: 'font-weight:800;display:block' }, p.name),
+            h('span', { class: 'tiny faint', style: 'display:block' },
+              `${p.weeks} weeks${p.subtitle ? ` · ${p.subtitle}` : ''}${started ? ' · in progress' : ''}`)));
+      })) : null,
     h('div', { class: 'card' },
       h('div', { class: 'h2', style: 'margin-bottom:8px' }, '📅 When do you start?'),
       h('div', { class: 'row', style: 'gap:8px;margin-bottom:8px' }, quick('Today', 0), quick('Tomorrow', 1)),
       dateIn,
-      h('div', { class: 'small', style: 'font-weight:700;margin:14px 0 4px' }, 'Your week'),
+      h('div', { class: 'small', style: 'font-weight:700;margin:14px 0 2px' }, 'Your week'),
+      h('div', { class: 'tiny faint', style: 'margin-bottom:6px' }, 'Hold a day and drag it onto another to swap them.'),
       weekList,
+      clashNote,
       easyRow,
       preview,
     ),

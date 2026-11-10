@@ -56,7 +56,10 @@ function render(opts = {}) {
   const tabbar = document.getElementById('tabbar');
   if (!s.onboarded) {
     tabbar.style.display = 'none';
-    view().replaceChildren(renderStart(DEFAULT_PROGRAM, () => { location.hash = '#/today'; render(); }));
+    // first run: the start screen follows whichever program you pick on it
+    const r = parseRoute();
+    const pid = r.name === 'start' && PROGRAMS[r.args[0]] ? r.args[0] : DEFAULT_PROGRAM;
+    view().replaceChildren(renderStart(pid, () => { location.hash = '#/today'; render(); }));
     return;
   }
   tabbar.style.display = '';

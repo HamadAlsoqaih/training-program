@@ -126,3 +126,90 @@ export function makeSortable(list, { onCommit, handleFilter } = {}) {
 
   return cleanup;
 }
+
+// ============================================================================
+// makeSwappable — hold an item, drag it onto another, let go: the two swap.
+// Used for days of the week (organizer and start screen). Items are the
+// elements inside `root` with a data-pos attribute; a disabled one is locked
+// (can't be picked up or dropped on). A quick move before the hold is a
+// scroll, so scrolling and tapping work as usual.
+//   scroller: the element that scrolls (default: the page)
+// ============================================================================
+export function makeSwappable(root, { onSwap, scroller = null, enabled = () => true, hold = 250 } = {}) {
+  const CANCEL = 10, EDGE = 56;
+  let dg = null;
+  const scrollY = () => (scroller ? scroller.scrollTop : window.scrollY);
+  const targetAt = (x, y) => {
+    const el = document.elementFromPoint(x, y)?.closest?.('[data-pos]');
+    return el && root.contains(el) && !el.disabled && +el.dataset.pos !== dg.from ? el : null;
+  };
+  const end = () => {
+    if (!dg) return;
+    clearTimeout(dg.timer);
+    cancelAnimationFrame(dg.raf);
+    dg.el.classList.remove('lifted');
+    dg.el.style.transform = ''; dg.el.style.pointerEvents = '';
+    dg.over?.classList.remove('over');
+    root.classList.remove('dragging');
+    window.removeEventListener('pointermove', move);
+    window.removeEventListener('pointerup', up);
+    window.removeEventListener('pointercancel', end);
+    dg = null;
+  };
+  // keep scrolling while the finger rests near the top or bottom edge
+  const edgeScroll = () => {
+    if (!dg?.active) return;
+    const r = scroller ? scroller.getBoundingClientRect() : { top: 0, bottom: window.innerHeight };
+    const dir = dg.y < r.top + EDGE ? -1 : dg.y > r.bottom - EDGE ? 1 : 0;
+    if (dir) { if (scroller) scroller.scrollTop += dir * 8; else window.scrollBy(0, dir * 8); place(); }
+    dg.raf = requestAnimationFrame(edgeScroll);
+  };
+  const place = () => {
+    dg.el.style.transform = `translate(${dg.x - dg.x0}px, ${dg.y - dg.y0 + scrollY() - dg.s0}px) scale(1.03)`;
+  };
+  const move = (e) => {
+    if (!dg) return;
+    if (!dg.active) { if (Math.hypot(e.clientX - dg.x0, e.clientY - dg.y0) > CANCEL) end(); return; }
+    e.preventDefault();
+    dg.x = e.clientX; dg.y = e.clientY;
+    place();
+    const t = targetAt(e.clientX, e.clientY);
+    if (t !== dg.over) { dg.over?.classList.remove('over'); dg.over = t; t?.classList.add('over'); }
+  };
+  const up = () => {
+    if (!dg) return;
+    const { active, over, from } = dg;
+    end();
+    if (!active) return;
+    // the press became a drag, so the click it fires is not a tap
+    const swallow = (ev) => { ev.preventDefault(); ev.stopPropagation(); };
+    window.addEventListener('click', swallow, { capture: true, once: true });
+    setTimeout(() => window.removeEventListener('click', swallow, { capture: true }), 350);
+    if (!over) return;
+    navigator.vibrate?.(10);
+    onSwap(from, +over.dataset.pos);
+  };
+  root.addEventListener('pointerdown', (e) => {
+    if (!enabled() || (e.button != null && e.button !== 0)) return;
+    const el = e.target.closest('[data-pos]');
+    if (!el || !root.contains(el) || el.disabled) return;
+    dg = { el, from: +el.dataset.pos, x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY,
+      s0: scrollY(), active: false, over: null, raf: 0 };
+    dg.timer = setTimeout(() => {
+      if (!dg) return;
+      dg.active = true;
+      el.classList.add('lifted');
+      el.style.pointerEvents = 'none';        // so the finger "sees" the item underneath
+      root.classList.add('dragging');
+      navigator.vibrate?.(8);
+      dg.raf = requestAnimationFrame(edgeScroll);
+    }, hold);
+    window.addEventListener('pointermove', move, { passive: false });
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', end);
+  });
+  // iPhone scrolls on touchmove whatever pointermove does: stop it mid-drag.
+  root.addEventListener('touchmove', (e) => { if (dg?.active) e.preventDefault(); }, { passive: false });
+  // a long press must not open the iOS callout / text selection
+  root.addEventListener('contextmenu', (e) => { if (e.target.closest('[data-pos]')) e.preventDefault(); });
+}

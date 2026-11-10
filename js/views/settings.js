@@ -14,7 +14,7 @@ import {
   idToIndex, toISO, DEFAULT_DAY_MAP, WEEKDAY_NAMES, dayMap, todayIndex, currentWeek,
   fmtDate, realToday, weekStartWd, deloadBlocks,
 } from '../schedule.js';
-import { whereAmISheet } from './sheets.js';
+import { whereAmISheet, openSheet, closeSheet } from './sheets.js';
 
 export const ACCENTS = [
   ['#fbbf24', 'Amber'], ['#f97316', 'Orange'], ['#ef4444', 'Red'], ['#ec4899', 'Pink'],
@@ -326,11 +326,30 @@ export function renderSettings(rerender) {
     onchange: async () => {
       const f = fileIn.files[0];
       if (!f) return;
-      try {
-        const replace = confirm('OK = REPLACE everything with the backup.\nCancel = merge (keep local days, fill gaps from backup).');
-        store.importJson(await f.text(), replace ? 'replace' : 'merge');
-        toast('Backup imported'); rerender();
-      } catch (e) { alert(`Import failed: ${e.message}`); }
+      fileIn.value = '';
+      let text, info;
+      try { text = await f.text(); info = store.previewBackup(text); }
+      catch { toast('That file isn’t a training backup'); return; }
+      const run = (mode) => {
+        try { store.importJson(text, mode); }
+        catch (e) { closeSheet(); toast(`Import failed: ${e.message}`); return; }
+        closeSheet(); toast(mode === 'replace' ? 'Backup loaded' : 'Backup merged'); rerender();
+      };
+      const when = info.exportedAt ? new Date(info.exportedAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : null;
+      openSheet(
+        h('div', { class: 'h2', style: 'margin-bottom:6px' }, 'Import this backup?'),
+        h('div', { class: 'small dim', style: 'margin-bottom:12px' },
+          `${when ? `Saved ${when}. ` : ''}It has ${info.days} logged day${info.days === 1 ? '' : 's'}`
+          + ` — ${info.added} not on this phone, ${info.newer} newer than this phone’s copy.`),
+        h('div', { class: 'small', style: 'margin-bottom:6px' },
+          h('b', {}, 'Merge'), ' adds the days you don’t have. When both have the same day, the one changed most recently wins.'),
+        h('div', { class: 'small', style: 'margin-bottom:14px' },
+          h('b', {}, 'Replace'), ' swaps everything on this phone for the backup.'),
+        h('div', { class: 'row', style: 'gap:8px' },
+          h('button', { class: 'btn grow', onclick: closeSheet }, 'Cancel'),
+          h('button', { class: 'btn grow', onclick: () => run('replace') }, 'Replace'),
+          h('button', { class: 'btn primary grow', onclick: () => run('merge') }, 'Merge')),
+      );
     },
   });
 

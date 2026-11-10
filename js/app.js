@@ -11,11 +11,12 @@
 //   #/start/<pid>               start / re-configure a program (also first run)
 //   #/progress  #/settings
 // ============================================================================
-import { h, svgRing } from './util.js';
+import { h, svgRing, toast } from './util.js';
 import * as store from './state.js';
 import { todayId, programStatus } from './schedule.js';
 import { DEFAULT_PROGRAM, PROGRAMS } from './program.js';
-import { onCountdown, extendCountdown, skipCountdown, fmtMs, acquireWakeLock } from './timers.js';
+import { onCountdown, extendCountdown, skipCountdown, fmtMs, acquireWakeLock, releaseWakeLock } from './timers.js';
+import { closeStaleSession } from './completion.js';
 import { renderDay, renderProgramGate } from './views/day.js';
 import { renderPrograms, renderProgram, renderPhase, renderWeek } from './views/programview.js';
 import { renderProgress } from './views/progress.js';
@@ -109,7 +110,24 @@ function render(opts = {}) {
 }
 
 window.addEventListener('hashchange', () => render());
+
+// A workout you forgot to finish closes by itself (see closeStaleSession).
+function closeForgotten() {
+  const closed = closeStaleSession();
+  if (!closed) return false;
+  releaseWakeLock();
+  toast(closed.elapsed
+    ? `Closed a workout you didn’t finish — ${Math.max(1, Math.round(closed.elapsed / 60000))} min saved`
+    : 'Closed a workout with nothing logged', 4200);
+  return true;
+}
+closeForgotten();
+setInterval(() => { if (closeForgotten()) render({ keepScroll: true }); }, 60e3);
 if (store.get().session) acquireWakeLock();
+
+store.onSaveError(() => toast('⚠️ Couldn’t save on this phone — storage may be full. Export a backup in Settings.', 6000));
+// Ask the browser not to clear this app's data when the phone is low on space.
+try { navigator.storage?.persist?.(); } catch { /* not supported */ }
 
 // --- rest / hold countdown bar ----------------------------------------------
 const restbar = document.getElementById('restbar');
@@ -143,7 +161,9 @@ onCountdown((cd) => {
 
 // re-check "today" when the app comes back to the foreground
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible' && currentRoute?.name === 'today') render({ keepScroll: true });
+  if (document.visibilityState !== 'visible') return;
+  const closed = closeForgotten();
+  if (closed || currentRoute?.name === 'today') render({ keepScroll: true });
 });
 
 if ('serviceWorker' in navigator && location.protocol === 'https:') {

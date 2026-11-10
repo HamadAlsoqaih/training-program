@@ -28,6 +28,8 @@ jobs:
         run: node tests/analytics.mjs
       - name: Deload week checks
         run: node tests/deload.mjs
+      - name: Workout and backup fix checks
+        run: node tests/fixes.mjs
 
   deploy:
     needs: test

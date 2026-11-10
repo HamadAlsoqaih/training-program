@@ -121,9 +121,22 @@ function migrateV1(old) {
   return next;
 }
 
+// A failed save (storage full, private mode) used to be silent: you kept
+// logging and lost it all on the next reload. The app now hears about it once,
+// and again only after a save has worked in between.
+let saveFailed = false;
+const saveErrorListeners = new Set();
+export const onSaveError = (fn) => { saveErrorListeners.add(fn); return () => saveErrorListeners.delete(fn); };
+
 function persist() {
-  try { localStorage.setItem(KEY, JSON.stringify(state)); }
-  catch (e) { console.error('persist failed', e); }
+  try {
+    localStorage.setItem(KEY, JSON.stringify(state));
+    saveFailed = false;
+  } catch (e) {
+    console.error('persist failed', e);
+    if (!saveFailed) saveErrorListeners.forEach((l) => { try { l(e); } catch { /* ignore */ } });
+    saveFailed = true;
+  }
 }
 
 export const get = () => state;
@@ -168,12 +181,49 @@ export function exportJson() {
   return JSON.stringify({ app: '15-week-program', exportedAt: new Date().toISOString(), state }, null, 2);
 }
 
-export function importJson(text, mode /* 'replace' | 'merge' */) {
+// When a day was last touched. Older records predate `updatedAt`, so fall back
+// to the newest timestamp the record carries anywhere.
+export function dayStamp(rec) {
+  if (!rec || typeof rec !== 'object') return 0;
+  let t = Math.max(rec.updatedAt || 0, rec.lastLoggedAt || 0, rec.finishedAt || 0, rec.startedAt || 0);
+  for (const x of Object.values(rec.ex || {})) {
+    for (const v of x?.sets || []) if (v?.loggedAt > t) t = v.loggedAt;
+  }
+  return t;
+}
+
+function parseBackup(text) {
   const parsed = JSON.parse(text);
   let incoming = parsed.state || parsed;
-  if (!incoming || typeof incoming !== 'object') throw new Error('Not a valid backup file');
+  if (!incoming || typeof incoming !== 'object' || (!incoming.programs && !incoming.days)) {
+    throw new Error('That file is not a training backup');
+  }
   if (!incoming.version || incoming.version < 2) incoming = migrateV1(incoming);
   else incoming = hydrate(incoming);
+  return { incoming, exportedAt: parsed.exportedAt || null };
+}
+
+// What a backup holds, for the "Import this backup?" question.
+export function previewBackup(text) {
+  const { incoming, exportedAt } = parseBackup(text);
+  let days = 0, newer = 0, added = 0;
+  for (const p of PROGRAM_LIST) {
+    const theirs = incoming.programs[p.id]?.days || {};
+    const mine = state.programs[p.id]?.days || {};
+    for (const [id, rec] of Object.entries(theirs)) {
+      days++;
+      if (!mine[id]) added++;
+      else if (dayStamp(rec) > dayStamp(mine[id])) newer++;
+    }
+  }
+  return { exportedAt, days, added, newer };
+}
+
+// mode 'merge': days only in the backup are added; a day on both sides keeps
+// whichever was changed more recently (a tie keeps this phone's).
+// mode 'replace': everything becomes the backup.
+export function importJson(text, mode /* 'replace' | 'merge' */) {
+  const { incoming } = parseBackup(text);
 
   update((s) => {
     if (mode === 'replace') {
@@ -182,7 +232,11 @@ export function importJson(text, mode /* 'replace' | 'merge' */) {
       for (const p of PROGRAM_LIST) {
         const mine = s.programs[p.id], theirs = incoming.programs[p.id];
         if (!theirs) continue;
-        mine.days = { ...theirs.days, ...mine.days };   // local wins on conflict
+        const days = { ...mine.days };
+        for (const [id, rec] of Object.entries(theirs.days || {})) {
+          if (!days[id] || dayStamp(rec) > dayStamp(days[id])) days[id] = rec;
+        }
+        mine.days = days;
         mine.fatigue = [...(theirs.fatigue || []), ...mine.fatigue]
           .filter((f, i, a) => a.findIndex((x) => x.week === f.week) === i);
         if (!mine.started && theirs.started) {

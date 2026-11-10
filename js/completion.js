@@ -298,9 +298,14 @@ export function firstOpenIndex(pid) {
 // ---------------------------------------------------------------------------
 // Mutations
 // ---------------------------------------------------------------------------
+// Every change to a day goes through here, so `updatedAt` is the day's "last
+// touched" stamp: backups merge on it (newer wins) and a forgotten workout is
+// judged idle from it.
 const dayRec = (s, pid, dayId) => {
   const p = s.programs[pid];
-  return p.days[dayId] || (p.days[dayId] = { status: null, ex: {} });
+  const d = p.days[dayId] || (p.days[dayId] = { status: null, ex: {} });
+  d.updatedAt = Date.now();
+  return d;
 };
 // The moment you log real work on a back-filled "assumed done" day, it stops
 // being an assumption — otherwise the history index would keep ignoring it.
@@ -633,4 +638,48 @@ export function removeDeload(pid, blockId) {
     }
   });
   return true;
+}
+
+// ---------------------------------------------------------------------------
+// Forgotten workouts
+// ---------------------------------------------------------------------------
+// A workout left running (you never pressed Finish) used to count forever, so
+// the next time you opened the app it said 19 hours. It now closes by itself
+// once it has gone quiet:
+//   * a workout on an earlier day: after 1 hour with nothing ticked or typed;
+//   * today's workout: after 3 hours (you may still be at the gym).
+// The clock stops 5 minutes after your last ticked set and never counts more
+// than 3 hours. With nothing ticked there is nothing to keep, so it is dropped.
+export const STALE = { idlePast: 3600e3, idleToday: 3 * 3600e3, afterLast: 5 * 60e3, max: 3 * 3600e3 };
+
+export function closeStaleSession(now = Date.now()) {
+  const s = store.get();
+  const sess = s.session;
+  if (!sess) return null;
+  const rec = store.day(sess.dayId, sess.pid) || {};
+  const setTimes = [];
+  for (const x of Object.values(rec.ex || {})) {
+    for (const v of x.sets || []) if (v?.done && v.loggedAt) setTimes.push(v.loggedAt);
+  }
+  const lastSet = setTimes.length ? Math.max(...setTimes) : 0;
+  const lastActive = Math.max(sess.startedAt || 0, sess.pausedAt || 0, lastSet,
+    rec.lastLoggedAt || 0, rec.updatedAt || 0);
+  const isToday = sess.pid === s.activeProgram && sess.dayId === todayId(new Date(now), sess.pid);
+  if (now - lastActive < (isToday ? STALE.idleToday : STALE.idlePast)) return null;
+
+  let elapsed = 0;
+  if (lastSet) {
+    let end = Math.min(now, lastSet + STALE.afterLast);
+    if (sess.pausedAt) end = Math.min(end, sess.pausedAt);
+    elapsed = Math.max(0, Math.min(STALE.max, end - sess.startedAt - (sess.pausedMs || 0)));
+  }
+  const { pid, dayId } = sess;
+  store.update((st) => {
+    if (elapsed) {
+      const d = dayRec(st, pid, dayId);
+      d.elapsedMs = (d.elapsedMs || 0) + elapsed;
+    }
+    st.session = null;
+  });
+  return { pid, dayId, elapsed, kept: !!lastSet };
 }

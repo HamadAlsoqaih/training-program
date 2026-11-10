@@ -15,6 +15,8 @@
   --accent-soft: rgba(59,130,246,.14);
   --accent-line: rgba(59,130,246,.42);
   --good: #34d399;          /* done */
+  --prep: #a78bfa;          /* prep weeks (before Week 1) */
+  --prep-dim: rgba(167, 139, 250, .45);
   --good-dim: rgba(52, 211, 153, .14);
   --warn: #fb923c;
   --bad: #f87171;
@@ -421,6 +423,10 @@ textarea.note:focus { outline: none; border-color: var(--accent); }
 .hcell.part { background: rgba(251,191,36,.5); border-color: transparent; }
 .hcell.today { outline: 2px solid var(--accent); outline-offset: 1px; }
 .hcell.rest { opacity: .35; }
+.hcell.prep.done { background: var(--prep); border-color: var(--prep); }
+.hcell.prep.part { background: var(--prep-dim); }
+.prepcard { border-color: rgba(167, 139, 250, .35); }
+.chip.prep { color: var(--prep); border-color: rgba(167, 139, 250, .45); }
 
 .phasebar { display: flex; gap: 3px; height: 10px; border-radius: 6px; overflow: hidden; margin: 8px 0 4px; }
 .phasebar div { position: relative; background: var(--card2); }

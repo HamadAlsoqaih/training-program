@@ -15,7 +15,7 @@ import { schemeSets } from './schemes.js';
 import * as store from './state.js';
 import {
   indexToId, idToIndex, dateForIndex, todayId, todaySlot, timeForDayId,
-  isDeloadId, deloadIdParts, deloadDayId, deloadBlocks, realToday, toISO,
+  isDeloadId, deloadIdParts, deloadDayId, deloadBlocks, realToday, toISO, mapForWeek,
 } from './schedule.js';
 
 const DAY_MS = 24 * 3600 * 1000;
@@ -733,7 +733,7 @@ export function restartProgram(pid) {
     p.startedAt = Date.now();
     const su = p.setup;
     su.deloads = [];
-    delete su.weekSwaps; delete su.weekMaps; delete su.mapHistory; delete su.easyStart; delete su.prepWeeks;
+    delete su.weekSwaps; delete su.weekMaps; delete su.mapHistory; delete su.easyStart; delete su.prepWeeks; delete su.prepMap;
     if (s.session?.pid === pid) s.session = null;
   });
 }
@@ -758,6 +758,7 @@ export function migrateEasyStart(now = new Date()) {
       const [y, m, d] = b.setup.anchorDate.split('-').map(Number);
       b.setup.anchorDate = toISO(new Date(y, m - 1, d + 14, 12));
       b.setup.prepWeeks = 2;
+      b.setup.prepMap = { ...mapForWeek(1, pid) };
       delete b.setup.easyStart;
       for (const id of Object.keys(b.days)) {
         const k = /^w([12])d([1-7])$/.exec(id);

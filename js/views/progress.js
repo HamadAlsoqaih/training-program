@@ -8,7 +8,7 @@ import {
 } from '../program.js';
 import * as store from '../state.js';
 import { dayProgress, weekProgress, historyFor, plannedDay } from '../completion.js';
-import { todayIndex, elapsedIndex, indexToId, dateForId, fmtDate, weekdayName, currentWeek, weekdayOfPos, WEEKDAY_NAMES } from '../schedule.js';
+import { todayIndex, elapsedIndex, indexToId, dateForId, fmtDate, weekdayName, currentWeek, weekdayOfPos, WEEKDAY_NAMES, prepWeeks, prepWeekIds, todayId } from '../schedule.js';
 import { fmtMs } from '../timers.js';
 import { lineChart, barChart } from '../charts.js';
 import { jumpVolumeByWeek, spikeCheck, freestyleBlocks, FREESTYLE } from '../analytics.js';
@@ -115,6 +115,7 @@ export function renderProgress(rerender) {
   }
 
   container.append(fatigueCard(pid, curWeek, rerender));
+  if (prepWeeks(pid)) container.append(prepCard(pid));
   container.append(heatmapCard(pid, statuses, tIdx, totalWeeks(pid)));
 
   const durs = statuses
@@ -321,6 +322,41 @@ function heatmapCard(pid, statuses, tIdx, weeks) {
       legend('var(--card2)', 'open')),
   );
 }
+// --- prep weeks -----------------------------------------------------------------
+// Prep weeks sit outside the program's own count, so they get their own small
+// card in their own colour: how many prep sessions you've done, day by day.
+function prepCard(pid) {
+  const P = prepWeeks(pid), today = todayId(undefined, pid);
+  let done = 0, total = 0;
+  const cells = [h('div')];
+  for (let d = 1; d <= 7; d++) cells.push(h('div', { class: 'wk', style: 'justify-content:center' }, WEEKDAY_NAMES[weekdayOfPos(d - 1, pid)][0]));
+  for (let n = 1; n <= P; n++) {
+    cells.push(h('div', { class: 'wk' }, `P${n}`));
+    for (const id of prepWeekIds(n, pid)) {
+      const p = dayProgress(pid, id);
+      const rest = getDay(pid, id)?.kind === 'off';
+      if (!rest) { total++; if (p.status === 'done') done++; }
+      let cls = 'hcell prep', glyph = '';
+      if (p.status === 'done') cls += ' done';
+      else if (p.status === 'skipped') { cls += ' skip'; glyph = '×'; }
+      else if (p.pct > 0) { cls += ' part'; glyph = '◐'; }
+      if (rest && !p.status) cls += ' rest';
+      if (id === today) cls += ' today';
+      cells.push(h('a', { class: cls, href: `#/day/${pid}/${id}`,
+        style: 'display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;color:#0b0f16' }, glyph));
+    }
+  }
+  return h('div', { class: 'card prepcard' },
+    h('div', { class: 'row', style: 'margin-bottom:8px' },
+      h('div', { class: 'h2 grow', style: 'font-size:14px' }, '🌱 Prep weeks'),
+      h('span', { class: 'chip prep' }, `${done} / ${total} sessions`)),
+    h('div', { class: 'heatmap' }, cells),
+    h('div', { class: 'row tiny faint', style: 'margin-top:8px;flex-wrap:wrap;gap:6px 12px' },
+      legend('var(--prep)', 'prep done'), legend('var(--prep-dim)', '◐ partial'), legend('var(--bad)', '× skipped'),
+      h('span', {}, 'Not counted in the program’s progress')),
+  );
+}
+
 const legend = (color, label) => h('span', { class: 'row', style: 'gap:4px' },
   h('span', { style: `width:10px;height:10px;border-radius:3px;background:${color};border:1px solid var(--line)` }), label);
 

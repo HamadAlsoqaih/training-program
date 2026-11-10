@@ -346,7 +346,7 @@ export function renderStart(pid, onDone, { restart = false } = {}) {
           b.setup = { ...b.setup, anchorDay, dayMap: mapper.getMap(), weekStart: mapper.getWeekStart(),
             anchorDate: prep ? toISO(new Date(isoOf(start).getTime() + 14 * DAY)) : start };
           delete b.setup.easyStart;
-          if (prep) b.setup.prepWeeks = 2; else delete b.setup.prepWeeks;
+          if (prep) { b.setup.prepWeeks = 2; b.setup.prepMap = mapper.getMap(); } else { delete b.setup.prepWeeks; delete b.setup.prepMap; }
           // a fresh schedule: no per-week arrangements left over from before
           delete b.setup.mapHistory; delete b.setup.weekMaps; delete b.setup.weekSwaps;
           s.activeProgram = pid;

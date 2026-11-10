@@ -26,7 +26,7 @@
 // comes from dateForCal().
 // ============================================================================
 import { get, setupOf, activePid, update } from './state.js';
-import { totalDays, totalWeeks, getProgram } from './program.js';
+import { totalDays, totalWeeks, getProgram, getDay } from './program.js';
 import {
   deloadBlocks, deloadBlock, blockCalStart, calIndexOf, slotAtCal,
   deloadDayId, deloadIdParts, isDeloadId, deloadLength,
@@ -198,15 +198,25 @@ export const prepIdParts = (id) => {
   return m ? { n: +m[1], slot: +m[2] } : null;
 };
 export const isPrepId = (id) => !!prepIdParts(id);
+// The prep layout is frozen when the program starts (setup.prepMap), so
+// rearranging Week 1 later never moves a prep day you already logged.
+const prepMap = (pid) => setupOf(pid).prepMap || mapForWeek(1, pid);
+const prepSlotAt = (p, pid) => {
+  const m = prepMap(pid), ws = weekStartWd(pid);
+  for (let d = 1; d <= 7; d++) if ((m[d] - ws + 7) % 7 === p) return d;
+  return p + 1;
+};
 export function prepIdAtCal(c, pid = activePid()) {
   const P = prepWeeks(pid) * 7;
   if (!(c < 0 && c >= -P)) return null;
   const k = c + P;
-  return `e${Math.floor(k / 7) + 1}d${slotAtPos(k % 7, 1, pid)}`;
+  return `e${Math.floor(k / 7) + 1}d${prepSlotAt(k % 7, pid)}`;
 }
 export function calOfPrepId(id, pid = activePid()) {
   const k = prepIdParts(id);
-  return k ? (k.n - 1) * 7 + posOfSlot(k.slot, 1, pid) - prepWeeks(pid) * 7 : null;
+  if (!k) return null;
+  const pos = (prepMap(pid)[k.slot] - weekStartWd(pid) + 7) % 7;
+  return (k.n - 1) * 7 + pos - prepWeeks(pid) * 7;
 }
 // the seven prep day ids of prep week n, in calendar order
 export const prepWeekIds = (n, pid = activePid()) =>
@@ -352,3 +362,14 @@ export function fmtDate(date) {
 
 export const behindDays = (firstOpenIndex, now = new Date(), pid = activePid()) =>
   todayIndex(now, pid) - firstOpenIndex;
+
+// "Week 3 · Tuesday", "Prep 1 · Tuesday" or "Deload · Tuesday" for any day id.
+export function dayLabel(pid, dayId) {
+  const d = getDay(pid, dayId);
+  if (!d) return '';
+  const date = dateForId(dayId, pid);
+  const wd = date ? WEEKDAY_NAMES[date.getDay()] : weekdayName(d.d, d.week, pid);
+  if (d.prep) return `Prep ${d.prep} · ${wd}`;
+  if (d.deload) return `Deload · ${wd}`;
+  return `Week ${d.week} · ${wd}`;
+}

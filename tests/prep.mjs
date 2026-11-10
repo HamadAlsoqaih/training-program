@@ -37,6 +37,14 @@ const full = sets('w1d6'), light = sets('e1d6');
 eq('prep: capped at 2', light.every((n, k) => n === (full[k] >= 3 ? 2 : full[k])), true);
 eq('prep: Week 1 itself is full', comp.isEasyDay('p15', 'w1d1'), false);
 eq('prep: no deload during prep', comp.deloadPlanFor('p15'), null);
+// rearranging Week 1 later never moves a logged prep day (layout frozen at start)
+setup({ anchorDate: iso(shift(14)), prepWeeks: 2, prepMap: { ...map } });
+const prepDate = iso(sched.dateForId('e1d3', 'p15'));
+const swapped = { ...map, 3: map[4], 4: map[3] };
+sched.saveWeekArrangement('p15', 1, swapped, 'week');
+eq('frozen: prep day keeps its date after Week 1 is rearranged', iso(sched.dateForId('e1d3', 'p15')), prepDate);
+eq('frozen: Week 1 itself did change', iso(sched.dateForId('w1d3', 'p15')) !== iso(new Date(Date.parse(prepDate) + 14 * DAY)), true);
+store.update((s) => { delete s.programs.p15.setup.weekMaps; });
 // countdown before prep starts runs to the first prep day
 setup({ anchorDate: iso(shift(21)), prepWeeks: 2 });
 eq('before prep: status before', sched.programStatus('p15').state, 'before');
@@ -50,6 +58,7 @@ const before = iso(sched.dateForId('w1d1', 'p15'));
 eq('migrate: converted', comp.migrateEasyStart(), ['p15']);
 const b = store.prog('p15');
 eq('migrate: prep weeks on', b.setup.prepWeeks, 2);
+eq('migrate: prep layout frozen', !!b.setup.prepMap, true);
 eq('migrate: easyStart gone', b.setup.easyStart, undefined);
 eq('migrate: logs moved', [b.days.e1d1?.note, b.days.e1d2?.note, b.days.w1d1, b.days.w5d1?.note], ['day1', 'day2', undefined, 'later']);
 eq('migrate: same date for the moved day', iso(sched.dateForId('e1d1', 'p15')), before);
@@ -67,7 +76,7 @@ eq('migrate: still legacy easy', [store.prog('p15').setup.easyStart, store.prog(
 // --- restart clears prep
 setup({ anchorDate: iso(shift(14)), prepWeeks: 2 });
 comp.restartProgram('p15');
-eq('restart: prep cleared', store.prog('p15').setup.prepWeeks, undefined);
+eq('restart: prep cleared', [store.prog('p15').setup.prepWeeks, store.prog('p15').setup.prepMap], [undefined, undefined]);
 
 if (fails) { console.error(`\n${fails} check(s) failed`); process.exit(1); }
 console.log('✓ All prep-week checks passed');

@@ -27,7 +27,7 @@ import {
   idToIndex, indexToId, clampIndex, todayId, todayIndex, dateForId, fmtDate,
   weekdayName, isSwapped, programStatus, realToday, toISO,
   todaySlot, isDeloadId, deloadIdParts, deloadBlock, deloadLength, deloadDayId,
-  calIndexOfDayId, dayIdAtCal, lastCalIndex, currentWeek, WEEKDAY_NAMES, prepWeeks,
+  calIndexOfDayId, dayIdAtCal, lastCalIndex, currentWeek, WEEKDAY_NAMES, prepWeeks, dayLabel,
 } from '../schedule.js';
 import {
   startSession, pauseSession, resumeSession, finishSession, discardSession, sessionElapsedMs,
@@ -379,10 +379,7 @@ export function renderProgramGate(pid, status, rerender) {
   return wrap;
 }
 
-const labelFor = (pid, dayId) => {
-  const d = getDay(pid, dayId);
-  return `Week ${d.week} · ${weekdayName(d.d, d.week, pid)}`;
-};
+const labelFor = (pid, dayId) => dayLabel(pid, dayId);
 
 // ---------------------------------------------------------------------------
 // Cards
@@ -954,6 +951,7 @@ function onDayCompleted(pid, dayId, rerender) {
 }
 
 function maybeBackupNudge(pid, week) {
+  if (!week) return;            // prep and deload days belong to no program week
   const s = store.get();
   import('../completion.js').then(({ weekProgress }) => {
     if (weekProgress(pid, week).closed && s.settings.backupPromptWeek < week) {

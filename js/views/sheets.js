@@ -21,7 +21,7 @@ import {
   dateForId, fmtDate, weekdayName, progOfWeekday, toISO, idToIndex, indexToId, todayIndex,
   WEEKDAY_NAMES, weekSwaps, currentWeek, todaySlot, todayId, deloadDayId, weekIdsInOrder,
   mapForWeek, usualMapForWeek, saveWeekArrangement, clearWeekArrangement, isCustomWeek,
-  weekStartWd, dateForIndex, realToday, prepWeeks, prepWeekIds,
+  weekStartWd, dateForIndex, realToday, prepWeeks, prepWeekIds, dayLabel,
 } from '../schedule.js';
 import { fmtMs } from '../timers.js';
 import { lineChart } from '../charts.js';
@@ -68,7 +68,9 @@ export function historySheet(exId, mode) {
       h('div', { class: 'row' },
         h('div', { class: 'grow' },
           h('div', { class: 'small', style: 'font-weight:700' },
-            entry.run ? `Week ${day.week ?? '–'} · earlier run` : `Week ${day.week} · ${weekdayName(day.d, day.week, entry.pid)}`,
+            entry.run ? `Week ${day.week ?? '–'} · earlier run`
+              : day.prep ? `Prep ${day.prep} · ${date ? WEEKDAY_NAMES[date.getDay()] : ''}`
+              : `Week ${day.week} · ${weekdayName(day.d, day.week, entry.pid)}`,
             entry.alt ? h('span', { class: 'chip info', style: 'margin-left:6px' }, `↔ ${entry.alt}`) : null,
             entry.mode === 'cable' ? h('span', { class: 'chip info', style: 'margin-left:6px' }, 'cable') : null,
             partial ? h('span', {
@@ -110,7 +112,7 @@ export function editExerciseSheet(pid, dayId, entry, rerender) {
   const ex = EX[entry.item.ex];
   const sch = entry.sch;
   const day = getDay(pid, dayId);
-  const phase = phaseOf(pid, day.week);
+  const phase = phaseOf(pid, day.week ?? day.deloadWeek ?? 1);   // prep and deload days have no week of their own
   const phaseIds = dayIdsForScope(pid, dayId, 'phase');
 
   const num = (label, value, min = 0) => {
@@ -362,7 +364,7 @@ export function summarySheet({ pid, dayId, elapsed, setsDone, prs }, onClose) {
     h('div', { class: 'center', style: 'padding:8px 0 4px' },
       h('div', { class: 'confetti-pop', style: 'font-size:52px' }, '🏐'),
       h('div', { class: 'h1', style: 'margin-top:6px' }, 'Session complete'),
-      h('div', { class: 'dim small' }, `Week ${day.week} · ${weekdayName(day.d, day.week, pid)} — ${day.title}`),
+      h('div', { class: 'dim small' }, `${dayLabel(pid, dayId)} — ${day.title}`),
     ),
     h('div', { class: 'statgrid', style: 'margin-top:14px' },
       h('div', { class: 'stat' }, h('div', { class: 'v' }, fmtMs(elapsed)), h('div', { class: 'k' }, 'Duration')),

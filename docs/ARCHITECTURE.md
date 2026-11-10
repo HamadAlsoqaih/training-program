@@ -31,7 +31,7 @@ js/
   charts.js             hand-rolled SVG charts
   util.js               h() DOM helper, toast, progress rings
   views/                day · programview · progress · settings · sheets
-tests/                  fidelity (program data) · schedule · analytics
+tests/                  fidelity · schedule · analytics · deload · fixes · organize
 ```
 
 ## Data model
@@ -63,9 +63,14 @@ A **section** is `{ title, tag, items }`; an **item** is
   programs: {
     p15: {
       started, startedAt,
-      setup:   { anchorDate, anchorDay, rolloverHour, dayMap, weekSwaps },
+      setup:   { anchorDate, anchorDay, rolloverHour, dayMap, weekStart, easyStart,
+                 mapHistory: [ { from: week, map } ],   // usual week, from that week on
+                 weekMaps:   { [week]: map },          // one week arranged differently
+                 weekSwaps,                            // older one-off swaps (still read)
+                 deloads },
       days:    { "w3d6": DayRecord },
       fatigue: [ { week, rating, at } ],
+      runs:    [ { startedAt, endedAt, setup, days, fatigue } ],  // put aside by Restart
     },
     p12: { ... },
   },

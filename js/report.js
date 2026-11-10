@@ -56,7 +56,7 @@ export function buildProgramReport(pid) {
   const exercises = [];
   const prs = [];
   for (const [exId, all] of historyIndex()) {
-    const list = all.filter((r) => r.pid === pid);
+    const list = all.filter((r) => r.pid === pid && !r.run);   // this run only
     if (!list.length) continue;
     let sets = 0, vol = 0, first = null, lastW = null;
     for (const r of list) {
@@ -91,7 +91,7 @@ export function buildProgramReport(pid) {
   // weekly sets + volume, from the same index
   for (const [, all] of historyIndex()) {
     for (const r of all) {
-      if (r.pid !== pid || r.index == null) continue;
+      if (r.pid !== pid || r.run || r.index == null) continue;
       const w = Math.floor(r.index / 7);
       if (!weekly[w]) continue;
       for (const st of r.sets) {

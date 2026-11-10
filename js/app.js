@@ -9,6 +9,7 @@
 //   #/phase/<pid>/<n>           weeks in a phase
 //   #/week/<pid>/<n>            days in a week
 //   #/start/<pid>               start / re-configure a program (also first run)
+//   #/start/<pid>/restart       start over from Week 1 (old run kept in history)
 //   #/progress  #/settings
 // ============================================================================
 import { h, svgRing, toast } from './util.js';
@@ -79,7 +80,8 @@ function render(opts = {}) {
       el = renderWeek(validPid(args[0]), +args[1], rerender); tab = 'program'; break;
     case 'start':
       tabbar.style.display = 'none';
-      view().replaceChildren(renderStart(validPid(args[0]), () => { location.hash = '#/today'; render(); }));
+      view().replaceChildren(renderStart(validPid(args[0]), () => { location.hash = '#/today'; render(); },
+        { restart: args[1] === 'restart' && store.prog(validPid(args[0])).started }));
       return;
     case 'progress':
       el = renderProgress(rerender); tab = 'progress'; break;

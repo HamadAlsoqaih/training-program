@@ -94,6 +94,9 @@ export function renderProgram(pid, rerender) {
       'You pick your training weekdays and where you are starting from. Your other program keeps all of its progress.'));
   } else if (isActive) {
     container.append(h('a', { class: 'btn primary block', style: 'min-height:54px', href: '#/today' }, '▶ Continue — go to today'));
+    container.append(h('div', { class: 'row', style: 'gap:8px;margin-top:8px' },
+      h('a', { class: 'btn sm grow', href: `#/start/${pid}` }, '⚙ Schedule / starting point'),
+      h('a', { class: 'btn sm grow', href: `#/start/${pid}/restart` }, '↺ Restart from Week 1')));
   } else {
     container.append(h('button', {
       class: 'btn block', style: 'min-height:54px',
@@ -104,7 +107,9 @@ export function renderProgram(pid, rerender) {
         location.hash = '#/today';
       },
     }, '⇄ Make this my active program'));
-    container.append(h('a', { class: 'btn sm block', style: 'margin-top:8px', href: `#/start/${pid}` }, '⚙ Change its schedule / starting point'));
+    container.append(h('div', { class: 'row', style: 'gap:8px;margin-top:8px' },
+      h('a', { class: 'btn sm grow', href: `#/start/${pid}` }, '⚙ Schedule / starting point'),
+      h('a', { class: 'btn sm grow', href: `#/start/${pid}/restart` }, '↺ Restart from Week 1')));
   }
 
   // phases

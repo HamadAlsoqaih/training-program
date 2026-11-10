@@ -4,6 +4,37 @@ Every version of this app, from the first build to today. Newest first.
 
 ---
 
+## v14 — Easier weeks, safer logging, restart
+
+- **Forgotten workouts close by themselves.** A workout you never finished no
+  longer counts for hours: after 1 hour with nothing logged (3 hours for
+  today's) it closes, its clock stopping 5 minutes after your last set, never
+  more than 3 hours. With nothing ticked it's simply dropped.
+- **Backups merge properly.** Import asks Merge or Replace in plain words, and
+  on merge the copy of a day changed most recently wins (before, this phone
+  always won, even with older data). A failed save now warns you.
+- **Workout bar shows the next set** ("NEXT Squat · set 2 of 3 · 40 kg"); tap
+  it to jump there. Supersets alternate A1 → B1 → A2 → B2, and the rest timer
+  says what's next.
+- **Ticking your first set starts the workout clock** if you forgot. Finish with
+  nothing ticked cancels instead of saving an empty workout.
+- **No-weight check:** ticking with an empty weight box asks "are you sure?" —
+  only on exercises you've logged weight for before.
+- **Weights carry down** to the unticked sets below, and when every set was
+  clean last time today's boxes already start 2.5 kg heavier.
+- **Fixed:** deload days now really prefill ~60% of your last weight.
+- **Organize any week:** tap a day, then another, to swap them. Done and past
+  days are locked; two same-kind hard days in a row can't be saved. Save for
+  this week only, or every week from now — past weeks keep their real dates.
+- **Simpler start:** pick a date (Today / Tomorrow) and that's Day 1. "Already
+  partway through?" and "Change which day gets which session" are tucked away.
+  New "It's been a long time" option: weeks 1–2 at 2 sets.
+- **Restart from Week 1** (program page, Settings, or when a program ends).
+  Your old logs move to an "earlier run": still in every exercise's history,
+  but the new weeks start empty.
+
+---
+
 ## v13 — Start dates that land where you expect
 
 - **Fixed: "Starts in 8 days" when you picked tomorrow.** A deload week inserted

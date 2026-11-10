@@ -8,7 +8,7 @@
 // ============================================================================
 import { h, toast } from '../util.js';
 import * as store from '../state.js';
-import { seedBefore, clearEmptyDeloadsFrom } from '../completion.js';
+import { seedBefore, clearEmptyDeloadsFrom, restartProgram } from '../completion.js';
 import { PROGRAM_LIST, getProgram, getWeek, daySlotsFor } from '../program.js';
 import {
   idToIndex, toISO, DEFAULT_DAY_MAP, WEEKDAY_NAMES, dayMap, todayIndex, currentWeek,
@@ -136,24 +136,46 @@ const progOfWeekdayIn = (map, wd) => {
 // ---------------------------------------------------------------------------
 // Start / re-configure a program
 // ---------------------------------------------------------------------------
-export function renderStart(pid, onDone) {
+export function renderStart(pid, onDone, { restart = false } = {}) {
   const program = getProgram(pid);
   const bucket = store.prog(pid);
   const first = !store.get().onboarded;
-  const today = new Date();
-  let week = bucket.started ? currentWeek(pid) : 1;
+  // Re-configuring a program you're already in opens on "partway through",
+  // with your current week; a new start or a restart opens on Week 1 · Day 1.
+  const reconfig = bucket.started && !restart;
+  const DAY = 86400000;
+  const today = realToday(pid);
+  const isoOf = (v) => { const [y, mo, d] = v.split('-').map(Number); return new Date(y, mo - 1, d, 12); };
 
+  let mapper;
+  let dateTouched = false;     // in "partway" mode, a typed date is never overwritten
+  let rotating = false;        // we are moving the week start ourselves
+  let easy = false;
+
+  // --- the simple path: one date, and Day 1 is that date -------------------
+  const dateIn = h('input', { class: 'txt', type: 'date',
+    value: reconfig && bucket.setup.anchorDate ? bucket.setup.anchorDate : toISO(today) });
+  const quick = (label, days) => h('button', { class: 'btn sm grow', onclick: () => {
+    dateIn.value = toISO(new Date(today.getTime() + days * DAY));
+    dateTouched = true; onDate();
+  } }, label);
+  const weekList = h('div', { class: 'weeklist' });
+  const easyTgl = h('input', { type: 'checkbox', onchange: () => { easy = easyTgl.checked; updatePreview(); } });
+  const easyRow = h('label', { class: 'row', style: 'margin-top:12px;gap:10px;align-items:flex-start' },
+    h('span', { class: 'switch' }, easyTgl, h('span', { class: 'knob' })),
+    h('span', { class: 'small' }, 'It’s been a long time since I trained',
+      h('span', { class: 'tiny faint', style: 'display:block' },
+        'Easier first 2 weeks: 2 sets wherever the program says 3 or more, and no “add weight” until week 3.')));
+
+  // --- "partway through": week + day + mark-before-as-done ----------------
+  const mid = h('details', { class: 'card', open: reconfig || null });
   const weekSel = h('select', { class: 'sel' },
     ...Array.from({ length: program.weeks }, (_, i) =>
-      h('option', { value: i + 1, selected: i + 1 === week }, `Week ${i + 1}`)));
+      h('option', { value: i + 1, selected: i + 1 === (reconfig ? currentWeek(pid) : 1) }, `Week ${i + 1}`)));
   const daySel = h('select', { class: 'sel' });
-  const dateIn = h('input', { class: 'txt', type: 'date', value: bucket.setup.anchorDate || toISO(today) });
-  const seedTgl = h('input', { type: 'checkbox' });
+  const seedTgl = h('input', { type: 'checkbox', onchange: () => updatePreview() });
   const preview = h('div', { class: 'banner', style: 'margin-top:12px' });
-  let mapper;
-  let dateTouched = false;   // once you type a date, nothing may overwrite it
 
-  // "Day N" here is YOUR Nth day of the week, in the order you arranged.
   const wdOfPos = (n) => (mapper.getWeekStart() + n - 1) % 7;
   const rebuildDays = () => {
     const cur = +daySel.value || 1;
@@ -161,102 +183,109 @@ export function renderStart(pid, onDone) {
       h('option', { value: i + 1, selected: i + 1 === cur }, `Day ${i + 1} — ${WEEKDAY_NAMES[wdOfPos(i + 1)]}`)));
   };
   const syncDayFromDate = () => {
-    const [y, mo, d] = (dateIn.value || toISO(today)).split('-').map(Number);
-    const wd = new Date(y, mo - 1, d, 12).getDay();
-    daySel.value = String(((wd - mapper.getWeekStart() + 7) % 7) + 1);
+    daySel.value = String(((isoOf(dateIn.value || toISO(today)).getDay() - mapper.getWeekStart() + 7) % 7) + 1);
   };
-  // Move the date to the NEAREST upcoming day that matches — counted from
-  // today, never backwards, and never over a date you typed yourself.
   const syncDateFromDay = () => {
     if (dateTouched) return;
-    const target = wdOfPos(+daySel.value);
-    const base = realToday(pid);
-    const shift = (target - base.getDay() + 7) % 7;
-    dateIn.value = toISO(new Date(base.getTime() + shift * 86400000));
+    const shift = (wdOfPos(+daySel.value) - today.getDay() + 7) % 7;
+    dateIn.value = toISO(new Date(today.getTime() + shift * DAY));
   };
 
   const updatePreview = () => {
-    week = +weekSel.value;
-    const dayN = +daySel.value;
-    const [y, mo, d] = (dateIn.value || toISO(today)).split('-').map(Number);
-    const chosen = new Date(y, mo - 1, d, 12);
-    const now = realToday(pid);
-    const diff = Math.round((chosen - now) / 86400000);
+    const partway = mid.open;
+    const chosen = isoOf(dateIn.value || toISO(today));
+    const diff = Math.round((chosen - today) / DAY);
+    const week = partway ? +weekSel.value : 1;
+    const dayN = partway ? +daySel.value : 1;
+    const slots = daySlotsFor(pid);
+    const ws = mapper.getWeekStart();
+    weekList.replaceChildren(...Array.from({ length: 7 }, (_, p) => h('div', { class: 'row tiny', style: 'padding:3px 0' },
+      h('b', { style: 'width:42px' }, WEEKDAY_NAMES[(ws + p) % 7].slice(0, 3)),
+      h('span', { class: 'grow dim' }, slots[mapper.slotAt(p) - 1]))));
+    const when = diff > 0 ? `<b>${fmtDate(chosen)}</b> — in ${diff} day${diff === 1 ? '' : 's'}`
+      : diff === 0 ? `<b>today</b> (${fmtDate(chosen)})`
+        : `<b>${fmtDate(chosen)}</b>, ${-diff} day${diff === -1 ? '' : 's'} ago`;
     const wdOk = chosen.getDay() === wdOfPos(dayN);
-    const session = daySlotsFor(pid)[mapper.slotAt(dayN - 1) - 1];
-
-    let when;
-    if (diff > 0) when = `Starts <b>${fmtDate(chosen)}</b> — in ${diff} day${diff === 1 ? '' : 's'}.`;
-    else if (diff === 0) when = `Starts <b>today</b> (${fmtDate(chosen)}).`;
-    else when = `Anchored to <b>${fmtDate(chosen)}</b>, ${-diff} day${diff === -1 ? '' : 's'} ago — today lands later in the program.`;
-
-    preview.innerHTML =
-      `${when}<br>That date is <b>Week ${week} · Day ${dayN} (${WEEKDAY_NAMES[wdOfPos(dayN)]})</b> — ${session}.`
-      + (wdOk ? '' : `<br><b>Heads up:</b> ${fmtDate(chosen)} is a ${WEEKDAY_NAMES[chosen.getDay()]}, but Day ${dayN} is your ${WEEKDAY_NAMES[wdOfPos(dayN)]}. Pick the matching day or change the date.`)
-      + (seedTgl.checked && (week > 1 || dayN > 1) ? '<br>Everything before it will be marked <b>done (assumed)</b>.' : '')
-      + (deloadBlocks(pid).some((b) => b.at >= (week - 1) * 7)
+    preview.innerHTML = (partway
+      ? `${when} is <b>Week ${week} · Day ${dayN} (${WEEKDAY_NAMES[wdOfPos(dayN)]})</b> — ${slots[mapper.slotAt(dayN - 1) - 1]}.`
+        + (wdOk ? '' : `<br><b>Heads up:</b> that date is a ${WEEKDAY_NAMES[chosen.getDay()]}, but Day ${dayN} is your ${WEEKDAY_NAMES[wdOfPos(dayN)]}. Pick the matching day or change the date.`)
+        + (seedTgl.checked && (week > 1 || dayN > 1) ? '<br>Everything before it will be marked <b>done (assumed)</b>.' : '')
+      : `Week 1 starts ${when}. Your week runs <b>${WEEKDAY_NAMES[ws]} → ${WEEKDAY_NAMES[(ws + 6) % 7]}</b>.`
+        + (easy ? '<br>🌱 Weeks 1–2 are easy weeks.' : ''))
+      + (restart ? `<br>Your ${Object.keys(bucket.days).length ? 'logged workouts move to “earlier run”: they stay in each exercise’s history, and the weeks start fresh' : 'weeks start fresh'}.` : '')
+      + (!restart && deloadBlocks(pid).some((b) => b.at >= (week - 1) * 7)
         ? '<br>A deload week you added earlier is in front of this start — it will be removed when you save (anything you logged in it is kept).' : '');
+    easyRow.style.display = partway ? 'none' : '';
   };
 
+  // Simple path: the date you pick is Day 1, so the week starts on its weekday.
+  const onDate = () => {
+    if (mid.open) { dateTouched = true; syncDayFromDate(); updatePreview(); return; }
+    rotating = true; mapper.rotateTo(isoOf(dateIn.value || toISO(today)).getDay()); rotating = false;
+    updatePreview();
+  };
+
+  let lastWs = null;
   mapper = dayMapEditor(pid, bucket.setup.dayMap || program.defaultDayMap || DEFAULT_DAY_MAP,
     bucket.setup.weekStart,
     () => {
-      // A new "Week starts on" means you're picking where Day 1 sits.
-      // Otherwise (sessions rearranged) the date stays and the day follows it.
-      if (mapper.getWeekStart() !== lastWs) {
-        lastWs = mapper.getWeekStart(); daySel.value = '1';
-        rebuildDays(); dateTouched = false; syncDateFromDay();
-      } else { rebuildDays(); syncDayFromDate(); }
+      if (!mapper) return;
+      const ws = mapper.getWeekStart();
+      if (ws !== lastWs && lastWs !== null && !rotating) {
+        // You changed "Week starts on" yourself: Day 1 moves to the nearest such day.
+        if (mid.open) { daySel.value = '1'; dateTouched = false; rebuildDays(); syncDateFromDay(); }
+        else dateIn.value = toISO(new Date(today.getTime() + ((ws - today.getDay() + 7) % 7) * DAY));
+      } else if (mid.open) { rebuildDays(); syncDayFromDate(); }
+      lastWs = ws;
       updatePreview();
     });
-  let lastWs = mapper.getWeekStart();
+  // A new start or restart: Day 1 is the chosen date, so turn the week (in
+  // your order) to begin on that weekday.
+  if (!reconfig) { rotating = true; mapper.rotateTo(isoOf(dateIn.value).getDay()); rotating = false; }
+  lastWs = mapper.getWeekStart();
   rebuildDays(); syncDayFromDate();
+  dateIn.addEventListener('change', onDate);
   weekSel.addEventListener('change', updatePreview);
   daySel.addEventListener('change', () => { syncDateFromDay(); updatePreview(); });
-  dateIn.addEventListener('change', () => { dateTouched = true; syncDayFromDate(); updatePreview(); });
-  seedTgl.addEventListener('change', updatePreview);
-  updatePreview();
+  mid.addEventListener('toggle', () => {
+    if (mid.open) { rebuildDays(); syncDayFromDate(); }
+    else { weekSel.value = '1'; onDate(); }
+    updatePreview();
+  });
+  mid.append(
+    h('summary', { class: 'h2', style: 'font-size:15px;cursor:pointer' }, '📍 Already partway through this program?'),
+    h('div', { class: 'small dim', style: 'margin:8px 0 10px' },
+      'Pick the week and day the date above falls on. Turn on the switch to mark everything before it as done.'),
+    h('div', { class: 'row', style: 'margin-bottom:8px' }, weekSel, daySel),
+    h('label', { class: 'row', style: 'margin-top:6px;gap:10px' },
+      h('span', { class: 'switch' }, seedTgl, h('span', { class: 'knob' })),
+      h('span', { class: 'small' }, 'Mark all previous days as already done')),
+  );
+  const custom = h('details', { class: 'card' },
+    h('summary', { class: 'h2', style: 'font-size:15px;cursor:pointer' }, '✎ Change which day gets which session'),
+    h('div', { class: 'small dim', style: 'margin:8px 0' },
+      'Any order you like. Picking a session that’s already placed swaps the two.'),
+    mapper.el);
+  setTimeout(updatePreview, 0);
 
   return h('div', { class: 'onboard' }, h('div', { class: 'inner' },
     h('div', { class: 'center', style: 'margin-bottom:22px' },
-      h('div', { style: 'font-size:56px' }, '🏐'),
-      h('div', { class: 'h1', style: 'margin-top:8px' }, first ? "Hamad's Training" : program.name),
+      h('div', { style: 'font-size:56px' }, restart ? '↺' : '🏐'),
+      h('div', { class: 'h1', style: 'margin-top:8px' }, first ? "Hamad's Training" : restart ? `Restart ${program.name}` : program.name),
       h('div', { class: 'dim small', style: 'margin-top:6px' },
-        first ? 'Your training programs, tracked on your phone.' : program.subtitle),
+        first ? 'Your training programs, tracked on your phone.' : restart ? 'Start over from Week 1.' : program.subtitle),
     ),
     h('div', { class: 'card' },
-      h('div', { class: 'h2', style: 'margin-bottom:6px' }, '🗓 Your week'),
-      h('div', { class: 'small dim', style: 'margin-bottom:8px' },
-        'Pick the day your week starts, then which session goes on each day — any order you like. The app always shows the workout that belongs to today.'),
-      mapper.el,
-    ),
-    h('div', { class: 'card' },
-      h('div', { class: 'h2', style: 'margin-bottom:10px' }, '📍 Where are you starting?'),
-      h('div', { class: 'small dim', style: 'margin-bottom:10px' },
-        'Fresh start = Week 1 · Day 1. Already mid-program? Pick your current day and turn on the switch to mark everything before it as done.'),
-      h('button', {
-        class: 'btn sm block', style: 'margin-bottom:10px',
-        onclick: () => {
-          // Week 1 Day 1, today, with the whole week rotated to match.
-          mapper.rotateTo(realToday(pid).getDay());
-          weekSel.value = '1';
-          rebuildDays();
-          daySel.value = '1';
-          dateIn.value = toISO(realToday(pid));
-          dateTouched = true;
-          updatePreview();
-          toast('Day 1 is today');
-        },
-      }, '▶ Start today as Day 1'),
-      h('div', { class: 'row', style: 'margin-bottom:8px' }, weekSel, daySel),
-      h('div', { class: 'tiny faint', style: 'margin-bottom:4px' },
-        'The real date that day falls on (a future date is fine — the app will count down to it):'),
+      h('div', { class: 'h2', style: 'margin-bottom:8px' }, '📅 When do you start?'),
+      h('div', { class: 'row', style: 'gap:8px;margin-bottom:8px' }, quick('Today', 0), quick('Tomorrow', 1)),
       dateIn,
-      h('label', { class: 'row', style: 'margin-top:12px;gap:10px' },
-        h('span', { class: 'switch' }, seedTgl, h('span', { class: 'knob' })),
-        h('span', { class: 'small' }, 'Mark all previous days as already done')),
+      h('div', { class: 'small', style: 'font-weight:700;margin:14px 0 4px' }, 'Your week'),
+      weekList,
+      easyRow,
       preview,
     ),
+    custom,
+    restart ? null : mid,
     first ? h('div', { class: 'card' },
       h('div', { class: 'h2', style: 'font-size:14px' }, '📲 Use it like an app'),
       h('div', { class: 'small dim', style: 'margin-top:4px' },
@@ -265,27 +294,32 @@ export function renderStart(pid, onDone) {
       class: 'btn primary block', style: 'margin-top:8px;min-height:54px',
       onclick: () => {
         if (!mapper.isValid()) { toast('Fix the duplicate weekdays first'); return; }
-        const anchorDay = `w${weekSel.value}d${mapper.slotAt(+daySel.value - 1)}`;
-        // A deload you inserted earlier would push a fresh start back a week.
-        // Remove any that sit at or after this start and hold no logged work —
-        // removing one moves any carried-over days back, so nothing is lost.
-        clearEmptyDeloadsFrom(pid, (+weekSel.value - 1) * 7);
+        const partway = mid.open && !restart;
+        const week = partway ? +weekSel.value : 1;
+        const dayN = partway ? +daySel.value : 1;
+        const anchorDay = `w${week}d${mapper.slotAt(dayN - 1)}`;
+        if (restart) restartProgram(pid);
+        // A deload inserted earlier would push a fresh start back a week: drop
+        // any at/after this start that hold no logged work.
+        else clearEmptyDeloadsFrom(pid, (week - 1) * 7);
         store.update((s) => {
           const b = s.programs[pid];
           b.started = true;
-          b.startedAt = b.startedAt || Date.now();
+          b.startedAt = restart ? Date.now() : (b.startedAt || Date.now());
           b.setup = { ...b.setup, anchorDate: dateIn.value || toISO(today), anchorDay,
             dayMap: mapper.getMap(), weekStart: mapper.getWeekStart() };
+          if (!partway && easy) b.setup.easyStart = true; else delete b.setup.easyStart;
           // a fresh schedule: no per-week arrangements left over from before
           delete b.setup.mapHistory; delete b.setup.weekMaps; delete b.setup.weekSwaps;
           s.activeProgram = pid;
           s.onboarded = true;
           if (s.session && s.session.pid !== pid) s.session = null;
         });
-        if (seedTgl.checked) seedBefore(pid, idToIndex(anchorDay, pid));
+        if (partway && seedTgl.checked) seedBefore(pid, idToIndex(anchorDay, pid));
+        toast(restart ? `${program.name} restarted` : 'Saved');
         onDone();
       },
-    }, bucket.started ? 'Save schedule →' : 'Start training →'),
+    }, restart ? '↺ Restart from Week 1' : bucket.started ? 'Save schedule →' : 'Start training →'),
     !first && bucket.started ? h('a', { class: 'btn block', style: 'margin-top:8px', href: `#/program/${pid}` }, 'Cancel') : null,
   ));
 }
@@ -383,7 +417,9 @@ export function renderSettings(rerender) {
           store.setActiveProgram(p.id); toast(`${p.name} is now active`); rerender();
         },
       }, p.name, h('span', { class: 'tiny' }, p.id === pid ? 'active' : store.prog(p.id).started ? 'switch' : 'start'))),
-      h('a', { class: 'btn sm block', href: '#/programs' }, 'Browse all programs'),
+      h('div', { class: 'row', style: 'gap:8px' },
+        h('a', { class: 'btn sm grow', href: '#/programs' }, 'Browse all programs'),
+        h('a', { class: 'btn sm grow', href: `#/start/${pid}/restart` }, `↺ Restart ${program.name.replace(/ Program$/, '')}`)),
     ),
 
     h('div', { class: 'card' },

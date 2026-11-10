@@ -87,7 +87,7 @@ export function jumpVolumeByWeek({ weeks = 12, now = Date.now() } = {}) {
       if (!b) byWeek.set(ws, (b = { weekStart: ws, contacts: 0, byExercise: {}, days: new Set() }));
       b.contacts += c;
       b.byExercise[exId] = (b.byExercise[exId] || 0) + c;
-      b.days.add(`${r.pid}:${r.dayId}`);
+      b.days.add(`${r.pid}:${r.run || 0}:${r.dayId}`);
     }
   }
 

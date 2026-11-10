@@ -51,8 +51,9 @@ export function historySheet(exId, mode) {
   const best = bestWeight(list);
 
   const rows = list.slice(-14).reverse().map((entry) => {
-    const day = getDay(entry.pid, entry.dayId);
-    const date = dateForId(entry.dayId, entry.pid);
+    const day = getDay(entry.pid, entry.dayId) || { week: null, d: null };
+    // an earlier run (before a Restart) has its own dates, not today's schedule
+    const date = entry.run ? (entry.at ? new Date(entry.at) : null) : dateForId(entry.dayId, entry.pid);
     const setsTxt = entry.sets.map((s) => {
       const wuTag = entry.wu > 0 && s.i < entry.wu ? 'WU ' : '';
       const reps = s.reps ?? (s.done ? entry.defReps : null);
@@ -66,7 +67,7 @@ export function historySheet(exId, mode) {
       h('div', { class: 'row' },
         h('div', { class: 'grow' },
           h('div', { class: 'small', style: 'font-weight:700' },
-            `Week ${day.week} · ${weekdayName(day.d, day.week, entry.pid)}`,
+            entry.run ? `Week ${day.week ?? '–'} · earlier run` : `Week ${day.week} · ${weekdayName(day.d, day.week, entry.pid)}`,
             entry.alt ? h('span', { class: 'chip info', style: 'margin-left:6px' }, `↔ ${entry.alt}`) : null,
             entry.mode === 'cable' ? h('span', { class: 'chip info', style: 'margin-left:6px' }, 'cable') : null,
             partial ? h('span', {

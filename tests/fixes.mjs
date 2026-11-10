@@ -143,5 +143,30 @@ const withSession = (dayId, startedAt, setsAt, extra = {}) => store.update((s) =
   store.update((s) => { s.programs.p15.setup.easyStart = false; });
 }
 
+// --- restart: the old run is put aside but stays in exercise history
+{
+  const planned = comp.plannedDay('p15', 'w1d1');
+  const e = planned.entries.find((x) => x.sch.t !== 'time');
+  store.update((s) => {
+    s.programs.p15.days = { w1d1: { status: 'done', finishedAt: 1000, ex: { [e.key]: { sets: [{ done: true, weight: 50, reps: 8, loggedAt: 1000 }] } } },
+      w1d2: { status: 'done', auto: true, ex: {} } };
+    s.programs.p15.setup.weekMaps = { 2: { ...sched.DEFAULT_DAY_MAP } };
+  });
+  comp.restartProgram('p15');
+  const b = store.prog('p15');
+  eq('restart: days cleared', Object.keys(b.days).length, 0);
+  eq('restart: one run archived', b.runs.length, 1);
+  eq('restart: assumed days not archived', Object.keys(b.runs[0].days), ['w1d1']);
+  eq('restart: custom weeks cleared', b.setup.weekMaps, undefined);
+  eq('restart: new w1d1 not done', comp.dayProgress('p15', 'w1d1').status, null);
+  const last = comp.lastSessionFor(e.item.ex, { pid: 'p15', dayId: 'w1d1' });
+  eq('restart: old run is "last time"', last && last.sets[0].weight, 50);
+  eq('restart: marked as earlier run', last && last.run, 1);
+  // a backup merge keeps archived runs from both sides without doubling
+  const text = store.exportJson();
+  store.importJson(text, 'merge');
+  eq('restart: merge does not double runs', store.prog('p15').runs.length, 1);
+}
+
 if (fails) { console.error(`\n${fails} check(s) failed`); process.exit(1); }
 console.log('✓ All fix checks passed');

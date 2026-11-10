@@ -60,13 +60,17 @@ export function plannedDay(pid, dayId) {
   const cacheKey = `${pid}:${dayId}`;
   const hit = planCache.get(cacheKey);
   if (hit && hit.rev === store.rev()) return hit.value;
+  const value = buildPlanned(pid, dayId, store.day(dayId, pid), isEasyDay(pid, dayId));
+  if (value) planCache.set(cacheKey, { rev: store.rev(), value });
+  return value;
+}
 
+// The same, for any record — also one from an earlier, archived run.
+function buildPlanned(pid, dayId, rec, easy) {
   const day = getDay(pid, dayId);
   if (!day) return null;
-  const rec = store.day(dayId, pid);
   const plan = rec?.plan || {};
   const byKey = new Map(dayExercises(day).map((e) => [e.key, e]));
-  const easy = isEasyDay(pid, dayId);
 
   // section order (personal order first, then any sections it doesn't mention)
   const secIdx = day.sections.map((_, si) => si);
@@ -98,9 +102,7 @@ export function plannedDay(pid, dayId) {
   });
 
   const all = sections.flatMap((s) => s.entries);
-  const value = { day, sections, entries: all, byKey: new Map(all.map((e) => [e.key, e])) };
-  planCache.set(cacheKey, { rev: store.rev(), value });
-  return value;
+  return { day, sections, entries: all, byKey: new Map(all.map((e) => [e.key, e])) };
 }
 
 export const plannedEntry = (pid, dayId, key) => plannedDay(pid, dayId)?.byKey.get(key) || null;
@@ -114,14 +116,20 @@ function buildHistoryIndex() {
   const index = new Map(); // exId → records[]
   for (const program of PROGRAM_LIST) {
     const pid = program.id;
-    const days = store.prog(pid).days;
-    for (const dayId of Object.keys(days)) {
-      const rec = days[dayId];
+    const bucket = store.prog(pid);
+    // run 0 = the program as it runs now; 1, 2… = earlier runs put aside by
+    // Restart. Old runs still count as history for every exercise.
+    const sources = [{ run: 0, days: bucket.days }]
+      .concat((bucket.runs || []).map((r, k) => ({ run: k + 1, days: r.days || {}, easy: !!r.setup?.easyStart })));
+    for (const src of sources) for (const dayId of Object.keys(src.days)) {
+      const rec = src.days[dayId];
       if (!rec || rec.auto || (!rec.ex && !rec.contacts)) continue;
-      const planned = plannedDay(pid, dayId);
+      const planned = src.run
+        ? buildPlanned(pid, dayId, rec, src.easy && /^w[12]d/.test(dayId))
+        : plannedDay(pid, dayId);
       if (!planned) continue;
-      const index0 = idToIndex(dayId, pid);
-      const t = timeForDayId(pid, dayId);
+      const index0 = src.run ? null : idToIndex(dayId, pid);
+      const t = src.run ? (rec.finishedAt || rec.updatedAt || rec.startedAt || 0) : timeForDayId(pid, dayId);
       // A deload day is light by design — it must never be read as a plateau,
       // a PR, or a reason to add weight next time.
       const light = isDeloadId(dayId) && (getDay(pid, dayId)?.light ?? true);
@@ -154,7 +162,7 @@ function buildHistoryIndex() {
         const loggedAt = Math.max(0, ...sets.map((x) => x.loggedAt || 0)) || null;
         const list = index.get(e.item.ex) || index.set(e.item.ex, []).get(e.item.ex);
         list.push({
-          pid, dayId, index: index0, t, loggedAt, at: loggedAt || t, sets,
+          pid, dayId, run: src.run, index: index0, t, loggedAt, at: loggedAt || t, sets,
           total: e.sets, doneCount, wu: e.wu, wsTotal: e.sets - e.wu, wsDone,
           defReps: e.sch.reps ?? null, side: !!e.item.side, taps, deload: light,
           alt: exRec?.alt || null, mode: exRec?.mode || 'band',
@@ -189,7 +197,7 @@ export function lastSessionFor(exId, ctx, mode) {
   const beforeT = typeof ctx === 'number' ? ctx : null;
   for (let i = list.length - 1; i >= 0; i--) {
     const r = list[i];
-    if (cur && r.pid === cur.pid && r.dayId === cur.dayId) continue;   // this day
+    if (cur && !r.run && r.pid === cur.pid && r.dayId === cur.dayId) continue;   // this day
     if (beforeT != null && r.at >= beforeT) continue;
     if (mode && r.mode !== mode) continue;
     return r;
@@ -204,7 +212,7 @@ export function lastWorkingSessionFor(exId, ctx, mode) {
   for (let i = list.length - 1; i >= 0; i--) {
     const r = list[i];
     if (r.deload) continue;
-    if (cur && r.pid === cur.pid && r.dayId === cur.dayId) continue;
+    if (cur && !r.run && r.pid === cur.pid && r.dayId === cur.dayId) continue;
     if (mode && r.mode !== mode) continue;
     return r;
   }
@@ -224,7 +232,7 @@ export function bestWeight(list) {
 export function overloadHint(exId, ctx, mode) {
   const last = lastWorkingSessionFor(exId, ctx, mode);
   if (!last || last.wsTotal <= 0) return null;
-  if (isEasyDay(last.pid, last.dayId)) return null;
+  if (!last.run && isEasyDay(last.pid, last.dayId)) return null;
   if (last.wsDone < last.wsTotal) return null;
   const wsLogged = last.sets.filter((s) => s.i >= last.wu && s.done && s.weight != null);
   if (wsLogged.length < last.wsTotal) return null;
@@ -700,4 +708,31 @@ export function closeStaleSession(now = Date.now()) {
     st.session = null;
   });
   return { pid, dayId, elapsed, kept: !!lastSet };
+}
+
+// ---------------------------------------------------------------------------
+// Restart
+// ---------------------------------------------------------------------------
+// Day records are keyed by program position ("w1d1"), so starting over from
+// Week 1 would show the old Week 1 as already done. Restart puts the current
+// run aside instead: its days stay in every exercise's history (last time,
+// charts, bests) but no longer count toward the new run's weeks.
+export function restartProgram(pid) {
+  store.update((s) => {
+    const p = s.programs[pid];
+    const kept = Object.fromEntries(Object.entries(p.days || {}).filter(([, r]) => r && !r.auto));
+    if (Object.keys(kept).length || (p.fatigue || []).length) {
+      (p.runs || (p.runs = [])).push({
+        startedAt: p.startedAt || null, endedAt: Date.now(),
+        setup: JSON.parse(JSON.stringify(p.setup || {})), days: kept, fatigue: p.fatigue || [],
+      });
+    }
+    p.days = {};
+    p.fatigue = [];
+    p.startedAt = Date.now();
+    const su = p.setup;
+    su.deloads = [];
+    delete su.weekSwaps; delete su.weekMaps; delete su.mapHistory; delete su.easyStart;
+    if (s.session?.pid === pid) s.session = null;
+  });
 }

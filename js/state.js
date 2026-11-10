@@ -42,6 +42,7 @@ const emptyProgram = () => ({
   setup: { anchorDate: null, anchorDay: 'w1d1', rolloverHour: 4, dayMap: null, weekSwaps: {}, deloads: [] },
   days: {},
   fatigue: [],
+  runs: [],   // earlier runs put aside by "Restart": { startedAt, endedAt, setup, days, fatigue }
 });
 
 const DEFAULTS = () => ({
@@ -85,6 +86,7 @@ function hydrate(saved) {
       setup: { ...emptyProgram().setup, ...(s.setup || {}) },
       days: s.days || {},
       fatigue: s.fatigue || [],
+      runs: Array.isArray(s.runs) ? s.runs : [],
     };
   }
   return {
@@ -237,6 +239,8 @@ export function importJson(text, mode /* 'replace' | 'merge' */) {
           if (!days[id] || dayStamp(rec) > dayStamp(days[id])) days[id] = rec;
         }
         mine.days = days;
+        const seen = new Set((mine.runs || []).map((r) => `${r.startedAt}:${r.endedAt}`));
+        mine.runs = [...(mine.runs || []), ...(theirs.runs || []).filter((r) => !seen.has(`${r.startedAt}:${r.endedAt}`))];
         mine.fatigue = [...(theirs.fatigue || []), ...mine.fatigue]
           .filter((f, i, a) => a.findIndex((x) => x.week === f.week) === i);
         if (!mine.started && theirs.started) {

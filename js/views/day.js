@@ -110,6 +110,7 @@ export function renderDay(pid, dayId, rerender) {
           prog.status === 'skipped' ? h('span', { class: 'chip bad' }, 'skipped') : null,
           !dl && isSwapped(day.week, day.d, pid) ? h('span', { class: 'chip info' }, '⇄ swapped') : null,
           hasCustomPlan(pid, dayId) ? h('span', { class: 'chip info' }, '✎ edited') : null,
+          isEasyDay(pid, dayId) ? h('span', { class: 'chip good' }, '🌱 easy week') : null,
         ),
         isToday ? h('div', { class: 'row', style: 'justify-content:center;gap:10px;margin-top:6px' },
           h('button', {
@@ -357,6 +358,8 @@ export function renderProgramGate(pid, status, rerender) {
   } else {
     wrap.append(h('a', { class: 'btn primary block', style: 'min-height:52px', href: '#/progress' },
       'See your progress'));
+    wrap.append(h('a', { class: 'btn block', style: 'margin-top:8px', href: `#/start/${pid}/restart` },
+      '↺ Run it again from Week 1'));
   }
 
   wrap.append(h('a', { class: 'btn block', style: 'margin-top:8px', href: `#/program/${pid}` },
@@ -932,7 +935,7 @@ function onDayCompleted(pid, dayId, rerender) {
     const todayW = Math.max(...(exRec.sets || []).map((x) => (x?.weight != null ? +x.weight : -Infinity)));
     if (!isFinite(todayW)) continue;
     const prevBest = bestWeight(historyFor(e.item.ex)
-      .filter((hh) => !(hh.pid === pid && hh.dayId === dayId)));
+      .filter((hh) => !(!hh.run && hh.pid === pid && hh.dayId === dayId)));
     if (prevBest === null || todayW > prevBest) prs.push({ name: EX[e.item.ex].name, weight: todayW, prev: prevBest });
   }
   chime('done');

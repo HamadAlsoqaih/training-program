@@ -21,7 +21,7 @@ import {
   toggleSet, setLog, markDay, setNote, completeSection, setExerciseField,
   toggleSkipExercise, toggleSkipSet, deleteSet, addSet, moveExercise, moveSection,
   hasCustomPlan, resetDayPlan, setExerciseOrder,
-  insertDeload, removeDeload, deloadPlanFor,
+  insertDeload, removeDeload, deloadPlanFor, isEasyDay,
 } from '../completion.js';
 import {
   idToIndex, indexToId, clampIndex, todayId, todayIndex, dateForId, fmtDate,
@@ -30,13 +30,13 @@ import {
   calIndexOfDayId, dayIdAtCal, lastCalIndex, currentWeek, WEEKDAY_NAMES,
 } from '../schedule.js';
 import {
-  startSession, pauseSession, resumeSession, finishSession, sessionElapsedMs,
+  startSession, pauseSession, resumeSession, finishSession, discardSession, sessionElapsedMs,
   setSessionElapsed, fmtMs, startCountdown, unlockAudio, chime,
 } from '../timers.js';
 import {
   historySheet, noteSheet, skipSheet, summarySheet, durationSheet, textSheet,
   whereAmISheet, editExerciseSheet, deloadSheet, weekOverviewSheet,
-  programReportSheet, maybeCelebrateProgram,
+  programReportSheet, maybeCelebrateProgram, openSheet, closeSheet,
 } from './sheets.js';
 import { deloadAdvice } from '../analytics.js';
 import { openVideo } from '../video.js';
@@ -211,8 +211,8 @@ export function renderDay(pid, dayId, rerender) {
   }
 
   // ---- sections -----------------------------------------------------------
-  const ctx = { pid, dayId, planned, dayCtx, rerender, cardEls, container };
-  const currentKey = sessionActive ? findCurrentKey(pid, dayId, planned) : null;
+  const ctx = { pid, dayId, planned, dayCtx, rerender, cardEls, container, isToday, wIns: new Map() };
+  const currentKey = sessionActive ? (nextSet(pid, dayId)?.entry.key ?? null) : null;
   ctx.currentKey = currentKey;
 
   planned.sections.forEach((block, pos) => {
@@ -397,6 +397,7 @@ function refreshCard(ctx, key) {
   old.replaceWith(next);
   ctx.cardEls.set(key, next);
   refreshSectionHeads(ctx);
+  fillNextLine(ctx.container, ctx.pid, ctx.dayId);
 }
 
 // Update just the "n / ✓" counters in section headers.
@@ -515,17 +516,21 @@ function exerciseCard(ctx, entry, pos, count) {
     card.append(nameIn);
   }
 
-  // --- overload hint ---
-  if (repsBased && !done && !entry.skipped && exerciseSetsDone(pid, dayId, entry) === 0) {
-    const hint = overloadHint(item.ex, dayCtx, ex.band ? mode : undefined);
-    if (hint) card.append(h('div', { class: 'hint' }, `Last time: all sets clean at ${hint.lastWeight} kg → add weight today`));
+  // --- overload: every working set clean last time → today starts heavier ---
+  // The new weight is already in the boxes; you can still type over it.
+  const bump = repsBased && !entry.skipped && !dayCtx.deload && !isEasyDay(pid, dayId)
+    ? overloadHint(item.ex, dayCtx, ex.band ? mode : undefined) : null;
+  if (bump) bump.next = Math.round((bump.lastWeight + BUMP_KG) * 10) / 10;
+  if (bump && !done && exerciseSetsDone(pid, dayId, entry) === 0) {
+    card.append(h('div', { class: 'hint' },
+      `Ready to add weight: every set clean at ${bump.lastWeight} kg last time → today starts at ${bump.next} kg`));
   }
 
   // --- sets ---
   const last = repsBased ? lastSessionFor(item.ex, dayCtx, ex.band ? mode : undefined) : null;
   const setsWrap = h('div', { class: 'sets' });
   for (let i = 0; i < entry.sets; i++) {
-    setsWrap.append(setRow(ctx, entry, i, last, repsBased));
+    setsWrap.append(setRow(ctx, entry, i, last, repsBased, bump));
   }
   card.append(setsWrap);
 
@@ -586,7 +591,7 @@ function exerciseCard(ctx, entry, pos, count) {
 }
 
 // One set row: [tick] [−][kg][+] [reps]  + last-session line
-function setRow(ctx, entry, i, last, repsBased) {
+function setRow(ctx, entry, i, last, repsBased, bump) {
   const { pid, dayId, rerender } = ctx;
   const { key, sch, item } = entry;
   const ex = EX[item.ex];
@@ -615,6 +620,20 @@ function setRow(ctx, entry, i, last, repsBased) {
     toast(now ? `Set ${i + 1} skipped` : `Set ${i + 1} back in`);
     refreshCard(ctx, key);
   };
+  const doTick = () => {
+    const { dayJustCompleted } = toggleSet(pid, dayId, entry, i, repsBased ? readInputs() : {});
+    const nowTicked = !ticked;
+    // The first set you tick today starts the workout clock if you forgot to.
+    const autoStarted = nowTicked && ctx.isToday && !store.get().session;
+    if (autoStarted) startSession(pid, dayId);
+    const effRest = effRestSecs(item.ex, entry.rest);
+    if (nowTicked && effRest > 0 && store.get().settings.autoRest && !dayJustCompleted) {
+      startCountdown({ label: restLabel(pid, dayId), secs: effRest, kind: 'rest' });
+    }
+    if (dayJustCompleted) { onDayCompleted(pid, dayId, rerender); return; }
+    if (autoStarted) { toast('Workout timer started'); rerender({ keepScroll: true }); return; }
+    refreshCard(ctx, key);
+  };
   const tick = h('button', {
     class: `set${isWU ? ' wu' : ''}${ticked ? ' on' : ''}${setSkipped ? ' skipped' : ''}`,
     'aria-label': `${ex.name} set ${i + 1}${setSkipped ? ' (skipped)' : ''} — hold to skip`,
@@ -629,14 +648,13 @@ function setRow(ctx, entry, i, last, repsBased) {
       clearTimeout(holdTimer);
       if (held) { held = false; return; }      // the hold already skipped it
       unlockAudio();
-      const { dayJustCompleted } = toggleSet(pid, dayId, entry, i, repsBased ? readInputs() : {});
-      const nowTicked = !ticked;
-      const effRest = effRestSecs(item.ex, entry.rest);
-      if (nowTicked && effRest > 0 && store.get().settings.autoRest && !dayJustCompleted) {
-        startCountdown({ label: `Rest — ${ex.name}`, secs: effRest, kind: 'rest' });
+      // An empty weight box on an exercise you have loaded before is probably a
+      // slip, so ask. Never asked for exercises you've only done without weight.
+      if (!ticked && wIn && wIn.value === '' && usedWeightBefore(item.ex, ex.band ? entry.mode : undefined)) {
+        confirmNoWeight(ex.name, doTick, () => wIn.focus());
+        return;
       }
-      if (dayJustCompleted) { onDayCompleted(pid, dayId, rerender); return; }
-      refreshCard(ctx, key);
+      doTick();
     },
   }, h('span', { class: 'lbl' }, setSkipped ? '⤼' : ticked ? '✓' : label));
 
@@ -653,12 +671,27 @@ function setRow(ctx, entry, i, last, repsBased) {
 
   // On a deload day the prescription is "about 60% of last time" — prefill that
   // rather than last week's working weight, so going light is the default.
-  const suggested = ctx.deload ? deloadWeight(prevSet?.weight ?? null) : (prevSet?.weight ?? null);
+  const suggested = ctx.dayCtx.deload ? deloadWeight(prevSet?.weight ?? null)
+    : (bump && !isWU ? bump.next : (prevSet?.weight ?? null));
+  // A weight you type carries down to the sets below it that aren't ticked yet
+  // (warm-ups and working sets each keep to their own group).
+  const carryDown = () => {
+    const w = readInputs().weight;
+    const sets = store.day(dayId, pid)?.ex?.[key]?.sets || [];
+    const boxes = ctx.wIns.get(key) || [];
+    for (let j = i + 1; j < entry.sets; j++) {
+      if ((sch.t === 'wuws' && j < entry.wu) !== isWU || sets[j]?.done || sets[j]?.skipped) continue;
+      setLog(pid, dayId, entry, j, { weight: w, reps: sets[j]?.reps ?? null });
+      if (boxes[j] && boxes[j] !== document.activeElement) boxes[j].value = w ?? '';
+    }
+  };
   wIn = h('input', {
-    type: 'number', inputmode: 'decimal', step: 'any', placeholder: ctx.deload ? 'kg (light)' : 'kg',
+    type: 'number', inputmode: 'decimal', step: 'any', placeholder: ctx.dayCtx.deload ? 'kg (light)' : 'kg',
     value: st?.weight ?? suggested ?? '',
-    onchange: saveLog,
+    onchange: () => { saveLog(); carryDown(); },
   });
+  if (!ctx.wIns.has(key)) ctx.wIns.set(key, []);
+  ctx.wIns.get(key)[i] = wIn;
   rIn = h('input', {
     type: 'number', inputmode: 'numeric', placeholder: sch.reps != null ? String(sch.reps) : 'reps',
     value: st?.reps ?? '',
@@ -669,7 +702,7 @@ function setRow(ctx, entry, i, last, repsBased) {
     onclick: () => {
       const cur = wIn.value !== '' ? +wIn.value : 0;
       wIn.value = String(Math.max(0, Math.round((cur + d) * 10) / 10));
-      saveLog();
+      saveLog(); carryDown();
     },
   }, d > 0 ? '+' : '−');
 
@@ -700,12 +733,63 @@ function setRow(ctx, entry, i, last, repsBased) {
 }
 
 // ---------------------------------------------------------------------------
-function findCurrentKey(pid, dayId, planned) {
-  for (const e of planned.entries) {
-    if (e.item.opt || e.skipped) continue;
-    if (!exerciseDone(pid, dayId, e)) return e.key;
-  }
-  return null;
+const BUMP_KG = 2.5;
+
+// The set up next: the first exercise with an open set. In a superset the two
+// alternate — once A has more sets done than B, B is next (A1 → B1 → A2 → B2).
+export function nextSet(pid, dayId) {
+  const planned = plannedDay(pid, dayId);
+  if (!planned) return null;
+  const req = requiredEntries(planned);
+  const rec = store.day(dayId, pid);
+  const openIdx = (e) => {
+    const sets = rec?.ex?.[e.key]?.sets || [];
+    for (let i = 0; i < e.sets; i++) if (!sets[i]?.done && !sets[i]?.skipped) return i;
+    return -1;
+  };
+  const at = req.findIndex((e) => openIdx(e) >= 0);
+  if (at < 0) return null;
+  let e = req[at];
+  const n = req[at + 1];
+  if (e.item.ss && n && n.item.ss === e.item.ss && openIdx(n) >= 0
+    && exerciseSetsDone(pid, dayId, e) > exerciseSetsDone(pid, dayId, n)) e = n;
+  return { entry: e, i: openIdx(e) };
+}
+const entryName = (e) => (EX[e.item.ex].band ? displayName(e.item.ex, e.mode) : EX[e.item.ex].name);
+
+function restLabel(pid, dayId) {
+  const nx = nextSet(pid, dayId);
+  return nx ? `Next: ${entryName(nx.entry)} · set ${nx.i + 1}` : 'Rest — last set done';
+}
+
+function fillNextLine(root, pid, dayId) {
+  const el = root.querySelector('[data-nextset]');
+  if (!el) return;
+  const nx = nextSet(pid, dayId);
+  el.dataset.key = nx ? nx.entry.key : '';
+  if (!nx) { el.textContent = 'All sets done ✓'; return; }
+  const w = store.day(dayId, pid)?.ex?.[nx.entry.key]?.sets?.[nx.i]?.weight;
+  el.replaceChildren(h('span', { class: 'tiny faint' }, 'NEXT '),
+    h('b', {}, entryName(nx.entry)),
+    ` · set ${nx.i + 1} of ${nx.entry.sets}${w != null ? ` · ${w} kg` : ''}`);
+}
+
+const dayHasTicks = (pid, dayId) =>
+  Object.values(store.day(dayId, pid)?.ex || {}).some((x) => (x.sets || []).some((v) => v?.done));
+
+// Have you ever logged a weight on this exercise (in this mode)?
+const usedWeightBefore = (exId, mode) => historyFor(exId).some((r) =>
+  (!mode || r.mode === mode) && r.sets.some((x) => x.weight != null && x.weight !== ''));
+
+function confirmNoWeight(name, onYes, onAdd) {
+  openSheet(
+    h('div', { class: 'h2', style: 'margin-bottom:6px' }, 'No weight on this set'),
+    h('div', { class: 'small dim', style: 'margin-bottom:14px' },
+      `You’ve used weight on ${name} before. Are you sure you won’t add weight?`),
+    h('div', { class: 'row', style: 'gap:8px' },
+      h('button', { class: 'btn grow', onclick: () => { closeSheet(); onYes(); } }, 'Tick without weight'),
+      h('button', { class: 'btn primary grow', onclick: () => { closeSheet(); onAdd(); } }, 'Add weight')),
+  );
 }
 
 function restDayCard(pid, dayId, prog, rerender) {
@@ -750,6 +834,13 @@ function sessionBar(pid, dayId, active, prog, rerender) {
     );
   }
   const paused = !!s.session.pausedAt;
+  const nextBtn = h('button', { class: 'nextset', 'data-nextset': '',
+    onclick: () => {
+      const k = nextBtn.dataset.key;
+      const card = k && document.querySelector(`[data-exkey="${k}"]`);
+      if (card) card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    } });
+  setTimeout(() => fillNextLine(document, pid, dayId), 0);
   const timeEl = h('span', {}, fmtMs(sessionElapsedMs()));
   timerInterval = setInterval(() => { timeEl.textContent = fmtMs(sessionElapsedMs()); }, 1000);
   return h('div', { class: 'sessionbar running' },
@@ -765,8 +856,15 @@ function sessionBar(pid, dayId, active, prog, rerender) {
       paused ? '▶' : '⏸'),
     h('button', {
       class: 'btn sm',
-      onclick: () => { const { elapsed } = finishSession(); toast(`Workout time saved: ${fmtMs(elapsed)}`); rerender({ keepScroll: true }); },
+      onclick: () => {
+        // Finishing with nothing ticked would save an empty workout: cancel it.
+        if (!dayHasTicks(pid, dayId)) {
+          discardSession(); toast('Nothing logged — workout cancelled'); rerender({ keepScroll: true }); return;
+        }
+        const { elapsed } = finishSession(); toast(`Workout time saved: ${fmtMs(elapsed)}`); rerender({ keepScroll: true });
+      },
     }, '■ Finish'),
+    nextBtn,
   );
 }
 

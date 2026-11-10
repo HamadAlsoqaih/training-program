@@ -40,6 +40,20 @@ function applyOverride(item, ov) {
   return { sch, rest: ov.rest != null ? ov.rest : item.rest };
 }
 
+// "It's been a long time" start: the first two weeks run at 2 working sets
+// wherever the program asks for 3 or more, while you learn the movements. Your
+// own per-day edits still win. Easy weeks never count as "ready to add weight".
+export const EASY_WEEKS = 2;
+export function isEasyDay(pid, dayId) {
+  if (!store.setupOf(pid).easyStart || isDeloadId(dayId)) return false;
+  const m = /^w(\d+)d/.exec(dayId || '');
+  return !!m && +m[1] <= EASY_WEEKS;
+}
+function easySch(sch, ov) {
+  if (sch.t === 'wuws') return ov?.ws == null && sch.ws >= 3 ? { ...sch, ws: 2 } : sch;
+  return ov?.sets == null && sch.sets >= 3 ? { ...sch, sets: 2 } : sch;
+}
+
 const planCache = new Map(); // `${pid}:${dayId}` → { rev, value }
 
 export function plannedDay(pid, dayId) {
@@ -52,6 +66,7 @@ export function plannedDay(pid, dayId) {
   const rec = store.day(dayId, pid);
   const plan = rec?.plan || {};
   const byKey = new Map(dayExercises(day).map((e) => [e.key, e]));
+  const easy = isEasyDay(pid, dayId);
 
   // section order (personal order first, then any sections it doesn't mention)
   const secIdx = day.sections.map((_, si) => si);
@@ -67,7 +82,9 @@ export function plannedDay(pid, dayId) {
     const entries = order.map((ii) => {
       const base = byKey.get(`s${si}i${ii}`);
       const ov = plan.ex?.[base.key];
-      const { sch, rest } = applyOverride(base.item, ov);
+      const o = applyOverride(base.item, ov);
+      const sch = easy ? easySch(o.sch, ov) : o.sch;
+      const { rest } = o;
       return {
         key: base.key, si, ii, item: base.item, sch, rest,
         sets: schemeSets(sch),
@@ -207,6 +224,7 @@ export function bestWeight(list) {
 export function overloadHint(exId, ctx, mode) {
   const last = lastWorkingSessionFor(exId, ctx, mode);
   if (!last || last.wsTotal <= 0) return null;
+  if (isEasyDay(last.pid, last.dayId)) return null;
   if (last.wsDone < last.wsTotal) return null;
   const wsLogged = last.sets.filter((s) => s.i >= last.wu && s.done && s.weight != null);
   if (wsLogged.length < last.wsTotal) return null;

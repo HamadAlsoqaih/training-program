@@ -151,7 +151,13 @@ svg { display: block; }
   display: flex; align-items: center; gap: 10px;
 }
 .sessionbar .time { font-size: 24px; font-weight: 800; font-variant-numeric: tabular-nums; }
-.sessionbar.running { border-color: var(--accent-line); }
+.sessionbar.running { border-color: var(--accent-line); flex-wrap: wrap; }
+.sessionbar .nextset {
+  flex-basis: 100%; text-align: left; font-size: 13px; color: var(--dim);
+  padding: 8px 2px 0; border-top: 1px solid var(--line); margin-top: 2px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.sessionbar .nextset b { color: var(--text); }
 
 /* --- exercise cards -------------------------------------------------------- */
 .section-title {
@@ -319,7 +325,8 @@ svg { display: block; }
   position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
   font-size: 12px; font-weight: 800; font-variant-numeric: tabular-nums;
 }
-.restcard .rlabel { font-size: 12px; color: var(--dim); font-weight: 600; }
+.restcard .grow { min-width: 0; }
+.restcard .rlabel { font-size: 12px; color: var(--dim); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .restcard .rtime { font-size: 21px; font-weight: 800; font-variant-numeric: tabular-nums; }
 
 /* --- bottom sheets ---------------------------------------------------------- */

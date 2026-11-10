@@ -128,5 +128,20 @@ const withSession = (dayId, startedAt, setsAt, extra = {}) => store.update((s) =
   eq('setNote stamps updatedAt', typeof store.day('w3d1', 'p15').updatedAt, 'number');
 }
 
+// --- easy start: weeks 1-2 run at 2 working sets where the program says 3+
+{
+  const sets = (id) => comp.plannedDay('p15', id).entries.map((e) => (e.sch.t === 'wuws' ? e.sch.ws : e.sch.sets));
+  store.update((s) => { s.programs.p15.setup.easyStart = false; });
+  const id = [1, 2, 3, 4, 5, 6, 7].map((d) => `w1d${d}`).find((x) => sets(x).some((n) => n >= 3));
+  const normal = sets(id);
+  store.update((s) => { s.programs.p15.setup.easyStart = true; });
+  const easy = sets(id);
+  eq('easy: capped at 2', easy.every((n, k) => n === (normal[k] >= 3 ? 2 : normal[k])), true);
+  eq('easy: something was capped', normal.some((n) => n >= 3), true);
+  eq('easy: week 3 is normal', comp.isEasyDay('p15', 'w3d1'), false);
+  eq('easy: deload days are not easy days', comp.isEasyDay('p15', 'k1d3'), false);
+  store.update((s) => { s.programs.p15.setup.easyStart = false; });
+}
+
 if (fails) { console.error(`\n${fails} check(s) failed`); process.exit(1); }
 console.log('✓ All fix checks passed');

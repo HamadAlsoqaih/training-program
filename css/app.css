@@ -431,6 +431,14 @@ select.sel, input.txt {
   background: var(--card); border: 1.5px solid var(--line);
 }
 select.sel:focus, input.txt:focus { outline: none; border-color: var(--accent); }
+/* iPhone gives date inputs a fixed native width: make them fit the card */
+input.txt[type="date"] {
+  display: block; min-width: 0; max-width: 100%; box-sizing: border-box;
+  -webkit-appearance: none; appearance: none; text-align: left; line-height: 48px;
+}
+input.txt[type="date"]::-webkit-date-and-time-value { text-align: left; }
+.weekstart { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); }
+.weekstart > .row { border-bottom: 0 !important; margin-bottom: 0 !important; padding-bottom: 0 !important; }
 
 .fatiguebtns { display: flex; gap: 6px; }
 .fatiguebtns button {

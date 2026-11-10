@@ -32,7 +32,7 @@ export const ACCENTS = [
 // however you like; picking a session that's already used swaps the two, so
 // the week can never end up with a session twice. Change the start day and the
 // whole arrangement moves with it, keeping your order.
-function dayMapEditor(pid, initialMap, initialWeekStart, onChange) {
+function dayMapEditor(pid, initialMap, initialWeekStart, onChange, { compact = false } = {}) {
   const slots = daySlotsFor(pid);
   const kinds = getWeek(pid, 1)?.days.map((d) => d.kind) || [];
   let weekStart = initialWeekStart ?? initialMap[1];
@@ -120,7 +120,8 @@ function dayMapEditor(pid, initialMap, initialWeekStart, onChange) {
     labels.push(lab); selects.push(sel); texts.push(txt);
     rows.push(h('div', { class: 'row', style: 'padding:5px 0;gap:8px' }, lab, sel, p > 0 ? txt : null));
   }
-  const el = h('div', {}, head, ...rows,
+  // compact: only "Week starts on" (the start screen arranges days by dragging)
+  const el = compact ? head : h('div', {}, head, ...rows,
     h('button', { class: 'btn sm block', style: 'margin-top:8px', onclick: () => { editing = !editing; refresh(); } }, editBtn),
     hint);
   setTimeout(refresh, 0);
@@ -254,7 +255,7 @@ export function renderStart(pid, onDone, { restart = false } = {}) {
       } else if (mid.open) { rebuildDays(); syncDayFromDate(); }
       lastWs = ws;
       updatePreview();
-    });
+    }, { compact: true });
   // A new start or restart: Day 1 is the chosen date, so turn the week (in
   // your order) to begin on that weekday.
   if (!reconfig) { rotating = true; mapper.rotateTo(isoOf(dateIn.value).getDay()); rotating = false; }
@@ -279,11 +280,6 @@ export function renderStart(pid, onDone, { restart = false } = {}) {
       h('span', { class: 'switch' }, seedTgl, h('span', { class: 'knob' })),
       h('span', { class: 'small' }, 'Mark all previous days as already done')),
   );
-  const custom = h('details', { class: 'card' },
-    h('summary', { class: 'h2', style: 'font-size:15px;cursor:pointer' }, '✎ Change which day gets which session'),
-    h('div', { class: 'small dim', style: 'margin:8px 0' },
-      'Any order you like. Picking a session that’s already placed swaps the two.'),
-    mapper.el);
   setTimeout(updatePreview, 0);
 
   return h('div', { class: 'onboard' }, h('div', { class: 'inner' },
@@ -317,10 +313,10 @@ export function renderStart(pid, onDone, { restart = false } = {}) {
       h('div', { class: 'tiny faint', style: 'margin-bottom:6px' }, 'Hold a day and drag it onto another to swap them.'),
       weekList,
       clashNote,
+      h('div', { class: 'weekstart' }, mapper.el),
       easyRow,
       preview,
     ),
-    custom,
     restart ? null : mid,
     first ? h('div', { class: 'card' },
       h('div', { class: 'h2', style: 'font-size:14px' }, '📲 Use it like an app'),

@@ -124,7 +124,7 @@ function closeForgotten() {
   releaseWakeLock();
   toast(closed.elapsed
     ? `Closed a workout you didn’t finish — ${Math.max(1, Math.round(closed.elapsed / 60000))} min saved`
-    : 'Closed a workout with nothing logged', 4200);
+    : closed.kept ? 'Closed a workout you didn’t finish' : 'Closed a workout with nothing logged', 4200);
   return true;
 }
 // phones that started with the first easy-start version move to prep weeks

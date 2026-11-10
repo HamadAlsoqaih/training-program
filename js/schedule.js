@@ -200,7 +200,7 @@ export const prepIdParts = (id) => {
 export const isPrepId = (id) => !!prepIdParts(id);
 // The prep layout is frozen when the program starts (setup.prepMap), so
 // rearranging Week 1 later never moves a prep day you already logged.
-const prepMap = (pid) => setupOf(pid).prepMap || mapForWeek(1, pid);
+export const prepMap = (pid = activePid()) => setupOf(pid).prepMap || mapForWeek(1, pid);
 const prepSlotAt = (p, pid) => {
   const m = prepMap(pid), ws = weekStartWd(pid);
   for (let d = 1; d <= 7; d++) if ((m[d] - ws + 7) % 7 === p) return d;

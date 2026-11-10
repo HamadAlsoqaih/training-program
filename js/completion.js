@@ -16,6 +16,7 @@ import * as store from './state.js';
 import {
   indexToId, idToIndex, dateForIndex, todayId, todaySlot, timeForDayId,
   isDeloadId, deloadIdParts, deloadDayId, deloadBlocks, realToday, toISO, mapForWeek,
+  weekIdsInOrder, dateForId, saveWeekArrangement,
 } from './schedule.js';
 
 const DAY_MS = 24 * 3600 * 1000;
@@ -121,19 +122,33 @@ function buildHistoryIndex() {
     // run 0 = the program as it runs now; 1, 2… = earlier runs put aside by
     // Restart. Old runs still count as history for every exercise.
     const sources = [{ run: 0, days: bucket.days }]
-      .concat((bucket.runs || []).map((r, k) => ({ run: k + 1, days: r.days || {}, easy: !!r.setup?.easyStart })));
+      .concat((bucket.runs || []).map((r, k) => ({ run: k + 1, days: r.days || {}, setup: r.setup || {} })));
     for (const src of sources) for (const dayId of Object.keys(src.days)) {
       const rec = src.days[dayId];
       if (!rec || rec.auto || (!rec.ex && !rec.contacts)) continue;
-      const planned = src.run
-        ? buildPlanned(pid, dayId, rec, src.easy && /^w[12]d/.test(dayId))
-        : plannedDay(pid, dayId);
+      // An earlier run is rebuilt from ITS OWN setup: its deload weeks (the ids
+      // restart from 1 in a new run) and its easy/prep weeks.
+      let planned, oldLight = null;
+      if (!src.run) planned = plannedDay(pid, dayId);
+      else {
+        const k = deloadIdParts(dayId);
+        if (k) {
+          const blk = (src.setup.deloads || []).find((b) => b.id === k.block);
+          if (!blk) continue;
+          const slot = blk.slots ? blk.slots[k.d - 1] : k.d;
+          planned = buildPlanned(pid, `w${blk.week}d${slot}`, rec, false);
+          oldLight = k.d >= blk.d0;
+        } else {
+          const easy = /^e[1-9]d/.test(dayId) || (!!src.setup.easyStart && /^w[12]d/.test(dayId));
+          planned = buildPlanned(pid, dayId, rec, easy);
+        }
+      }
       if (!planned) continue;
       const index0 = src.run ? null : idToIndex(dayId, pid);
       const t = src.run ? (rec.finishedAt || rec.updatedAt || rec.startedAt || 0) : timeForDayId(pid, dayId);
       // A deload day is light by design — it must never be read as a plateau,
       // a PR, or a reason to add weight next time.
-      const light = isDeloadId(dayId) && (getDay(pid, dayId)?.light ?? true);
+      const light = oldLight ?? (isDeloadId(dayId) && (getDay(pid, dayId)?.light ?? true));
       for (const e of planned.entries) {
         const exRec = rec.ex?.[e.key];
         // Tapped ground contacts (Freestyle Jumping) live on the day, not on
@@ -605,7 +620,9 @@ export function insertDeload(pid = store.activePid(), now = new Date()) {
   store.update((s) => {
     const p = s.programs[pid];
     const list = p.setup.deloads || (p.setup.deloads = []);
-    const id = list.reduce((m, b) => Math.max(m, b.id), 0) + 1;
+    // ids never repeat across runs, so an archived "k1d3" can't be confused with a new one
+    const id = [...list, ...(p.runs || []).flatMap((r) => r.setup?.deloads || [])]
+      .reduce((m, b) => Math.max(m, b.id), 0) + 1;
     // Which session sits at each position of that week, frozen now — the block
     // is a fixed event and must not change if you rearrange your days later.
     const slots = Array.from({ length: 7 }, (_, pos) =>
@@ -735,6 +752,10 @@ export function restartProgram(pid) {
     su.deloads = [];
     delete su.weekSwaps; delete su.weekMaps; delete su.mapHistory; delete su.easyStart; delete su.prepWeeks; delete su.prepMap;
     if (s.session?.pid === pid) s.session = null;
+    // a new run gets its own finish screen, deload advice and backup nudges
+    if (s.settings.celebrated) delete s.settings.celebrated[pid];
+    if (s.settings.deloadDismissed) delete s.settings.deloadDismissed[pid];
+    if (pid === s.activeProgram) s.settings.backupPromptWeek = 0;
   });
 }
 
@@ -760,6 +781,10 @@ export function migrateEasyStart(now = new Date()) {
       b.setup.prepWeeks = 2;
       b.setup.prepMap = { ...mapForWeek(1, pid) };
       delete b.setup.easyStart;
+      // one-off arrangements and ratings were for the old Weeks 1-2 (now prep)
+      if (b.setup.weekMaps) { delete b.setup.weekMaps[1]; delete b.setup.weekMaps[2]; }
+      if (b.setup.weekSwaps) { delete b.setup.weekSwaps[1]; delete b.setup.weekSwaps[2]; }
+      b.fatigue = (b.fatigue || []).filter((f) => f.week > 2);
       for (const id of Object.keys(b.days)) {
         const k = /^w([12])d([1-7])$/.exec(id);
         if (!k) continue;
@@ -773,4 +798,22 @@ export function migrateEasyStart(now = new Date()) {
     moved.push(pid);
   }
   return moved;
+}
+
+// Settings → "Save weekdays": change the usual week without moving anything
+// you already trained. If this week has a day gone by or logged, the change
+// starts next week (🗓 Organize this week covers the current one).
+// Returns the week it applies from.
+export function saveUsualWeek(pid, map, now = new Date()) {
+  const slot = todaySlot(pid, now);
+  const cw = Math.max(1, Math.floor(Math.max(0, slot.index) / 7) + 1);
+  const today = toISO(realToday(pid, now));
+  const touched = !slot.prep && weekIdsInOrder(cw, pid).some((id) => {
+    const d = dateForId(id, pid), rec = store.day(id, pid);
+    return (d && toISO(d) < today) || (rec && !rec.auto && (rec.status
+      || Object.values(rec.ex || {}).some((x) => (x.sets || []).some((v) => v?.done))));
+  });
+  const from = touched ? cw + 1 : cw;
+  saveWeekArrangement(pid, from, map, 'every');
+  return from;
 }

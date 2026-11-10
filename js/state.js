@@ -245,13 +245,32 @@ export function importJson(text, mode /* 'replace' | 'merge' */) {
       for (const p of PROGRAM_LIST) {
         const mine = s.programs[p.id], theirs = incoming.programs[p.id];
         if (!theirs) continue;
+        const seen = new Set((mine.runs || []).map((r) => `${r.startedAt}:${r.endedAt}`));
+        mine.runs = [...(mine.runs || []), ...(theirs.runs || []).filter((r) => !seen.has(`${r.startedAt}:${r.endedAt}`))];
+        // A backup of a DIFFERENT run (taken before you restarted, say) must not
+        // pour its days into this run: it is kept as an earlier run instead.
+        // (after a Restart, any backup not from this run counts — even an old
+        // one that never recorded a start time)
+        const otherRun = mine.started && theirs.started && (theirs.startedAt ?? null) !== (mine.startedAt ?? null)
+          && ((mine.runs || []).length > 0 || (!!mine.startedAt && !!theirs.startedAt));
+        if (otherRun) {
+          const kept = Object.fromEntries(Object.entries(theirs.days || {}).filter(([, r]) => r && !r.auto));
+          const old = mine.runs.find((r) => r.startedAt === theirs.startedAt);
+          if (old) {
+            for (const [id, rec] of Object.entries(kept)) {
+              if (!old.days[id] || dayStamp(rec) > dayStamp(old.days[id])) old.days[id] = rec;
+            }
+          } else if (Object.keys(kept).length) {
+            mine.runs.push({ startedAt: theirs.startedAt, endedAt: null,
+              setup: JSON.parse(JSON.stringify(theirs.setup || {})), days: kept, fatigue: theirs.fatigue || [] });
+          }
+          continue;
+        }
         const days = { ...mine.days };
         for (const [id, rec] of Object.entries(theirs.days || {})) {
           if (!days[id] || dayStamp(rec) > dayStamp(days[id])) days[id] = rec;
         }
         mine.days = days;
-        const seen = new Set((mine.runs || []).map((r) => `${r.startedAt}:${r.endedAt}`));
-        mine.runs = [...(mine.runs || []), ...(theirs.runs || []).filter((r) => !seen.has(`${r.startedAt}:${r.endedAt}`))];
         mine.fatigue = [...(theirs.fatigue || []), ...mine.fatigue]
           .filter((f, i, a) => a.findIndex((x) => x.week === f.week) === i);
         if (!mine.started && theirs.started) {

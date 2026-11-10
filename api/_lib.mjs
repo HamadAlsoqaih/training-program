@@ -22,9 +22,10 @@ export const sendUrl = (request) => (env('VERCEL_PROJECT_PRODUCTION_URL')
   ? `https://${env('VERCEL_PROJECT_PRODUCTION_URL')}` : new URL(request.url).origin) + '/api/send';
 
 // Only the app itself may ask for notifications.
+// Browsers always send Origin on these POSTs, so a request without one isn't the app.
 export function fromApp(request) {
   const o = request.headers.get('origin');
-  return !o || new URL(o).host === new URL(request.url).host;
+  try { return !!o && new URL(o).host === new URL(request.url).host; } catch { return false; }
 }
 
 // The phone's push address, exactly as the browser gave it.

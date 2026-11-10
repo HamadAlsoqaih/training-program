@@ -32,6 +32,7 @@ eq('reminder: 503 when not set up', (await reminder.POST(post('https://app.examp
 // --- configured: other sites refused, bad bodies refused (before any network call)
 process.env.VAPID_PUBLIC_KEY = 'pub'; process.env.VAPID_PRIVATE_KEY = 'priv'; process.env.QSTASH_TOKEN = 'tok';
 eq('key: handed out', await (await key.GET()).json(), { key: 'pub' });
+eq('timer: no Origin refused', (await timer.POST(new Request('https://app.example/api/timer', { method: 'POST', body: '{}' }))).status, 403);
 eq('timer: other site refused', (await timer.POST(post('https://app.example/api/timer', {}, 'https://evil.example'))).status, 403);
 eq('timer: no sub refused', (await timer.POST(post('https://app.example/api/timer', { at: Date.now() + 60e3 }))).status, 400);
 const sub = { endpoint: 'https://push.example/x', keys: { p256dh: 'a', auth: 'b' } };

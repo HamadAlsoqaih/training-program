@@ -1,5 +1,5 @@
 // Service worker — cache-first app shell for full offline use.
-const CACHE = 't15-v18';
+const CACHE = 't15-v19';
 const ASSETS = [
   './',
   './index.html',

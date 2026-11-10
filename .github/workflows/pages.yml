@@ -34,6 +34,8 @@ jobs:
         run: node tests/organize.mjs
       - name: Prep week checks
         run: node tests/prep.mjs
+      - name: Edge case checks
+        run: node tests/edge.mjs
       - name: Notification server checks
         run: npm ci --no-audit --no-fund && node tests/notify.mjs
 

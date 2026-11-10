@@ -68,9 +68,8 @@ export function historySheet(exId, mode) {
       h('div', { class: 'row' },
         h('div', { class: 'grow' },
           h('div', { class: 'small', style: 'font-weight:700' },
-            entry.run ? `Week ${day.week ?? '–'} · earlier run`
-              : day.prep ? `Prep ${day.prep} · ${date ? WEEKDAY_NAMES[date.getDay()] : ''}`
-              : `Week ${day.week} · ${weekdayName(day.d, day.week, entry.pid)}`,
+            entry.run ? `${/^k/.test(entry.dayId) ? 'Deload' : /^e/.test(entry.dayId) ? 'Prep' : `Week ${day.week ?? '–'}`} · earlier run`
+              : dayLabel(entry.pid, entry.dayId),
             entry.alt ? h('span', { class: 'chip info', style: 'margin-left:6px' }, `↔ ${entry.alt}`) : null,
             entry.mode === 'cable' ? h('span', { class: 'chip info', style: 'margin-left:6px' }, 'cable') : null,
             partial ? h('span', {

@@ -13,7 +13,7 @@
 import * as store from './state.js';
 import { activeCountdown } from './timers.js';
 import { getWeek } from './program.js';
-import { usualMapForWeek, currentWeek, programStatus } from './schedule.js';
+import { usualMapForWeek, currentWeek, programStatus, todaySlot, prepMap } from './schedule.js';
 
 export const PUSH_OK = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window
   && window.isSecureContext;
@@ -77,10 +77,12 @@ export function sendTest() {
 
 // Weekdays with a session on them in your usual week (full rest days skipped).
 export function trainingWeekdays(pid = store.activePid()) {
-  if (programStatus(pid).state === 'over') return [];
-  const week = Math.max(1, currentWeek(pid));
+  const st = programStatus(pid).state;
+  if (st !== 'active') return [];          // not started yet, or finished: no reminder
+  const prep = !!todaySlot(pid).prep;
+  const week = prep ? 1 : Math.max(1, currentWeek(pid));
   const days = getWeek(pid, week)?.days || [];
-  const map = usualMapForWeek(week, pid);
+  const map = prep ? prepMap(pid) : usualMapForWeek(week, pid);
   return [...new Set(days.filter((d) => d.kind !== 'off').map((d) => map[d.d]))].sort();
 }
 

@@ -8,11 +8,11 @@
 // ============================================================================
 import { h, toast } from '../util.js';
 import * as store from '../state.js';
-import { seedBefore, clearEmptyDeloadsFrom, restartProgram } from '../completion.js';
+import { seedBefore, clearEmptyDeloadsFrom, restartProgram, saveUsualWeek } from '../completion.js';
 import { PROGRAM_LIST, getProgram, getWeek, daySlotsFor } from '../program.js';
 import {
   idToIndex, toISO, DEFAULT_DAY_MAP, WEEKDAY_NAMES, dayMap, todayIndex, currentWeek,
-  fmtDate, realToday, weekStartWd, deloadBlocks, saveWeekArrangement,
+  fmtDate, realToday, weekStartWd, deloadBlocks, saveWeekArrangement, todaySlot, dateForId, prepWeekIds, weekIdsInOrder,
 } from '../schedule.js';
 import { whereAmISheet, openSheet, closeSheet } from './sheets.js';
 import { makeSwappable } from '../dragsort.js';
@@ -156,11 +156,16 @@ export function renderStart(pid, onDone, { restart = false } = {}) {
   let mapper;
   let dateTouched = false;     // in "partway" mode, a typed date is never overwritten
   let rotating = false;        // we are moving the week start ourselves
-  let easy = false;
+  // Reconfiguring keeps what you have: prep weeks stay on, and if you're in
+  // them right now the screen opens on them (not on "partway").
+  const inPrep = reconfig && !!todaySlot(pid).prep;
+  let easy = reconfig ? !!bucket.setup.prepWeeks : false;
 
   // --- the simple path: one date, and Day 1 is that date -------------------
   const dateIn = h('input', { class: 'txt', type: 'date',
-    value: reconfig && bucket.setup.anchorDate ? bucket.setup.anchorDate : toISO(today) });
+    // reconfiguring: the date is today (or your first prep day), and the week
+    // picker says which week today is — so Save without changes changes nothing
+    value: inPrep ? toISO(dateForId(prepWeekIds(1, pid)[0], pid)) : toISO(today) });
   const quick = (label, days) => h('button', { class: 'btn sm grow', onclick: () => {
     dateIn.value = toISO(new Date(today.getTime() + days * DAY));
     dateTouched = true; onDate();
@@ -168,7 +173,7 @@ export function renderStart(pid, onDone, { restart = false } = {}) {
   const weekList = h('div', { class: 'weeklist' });
   const clashNote = h('div', { class: 'tiny', style: 'color:var(--warn);margin-top:4px' });
   const kinds = getWeek(pid, 1)?.days.map((d) => d.kind) || [];
-  const easyTgl = h('input', { type: 'checkbox', onchange: () => { easy = easyTgl.checked; updatePreview(); } });
+  const easyTgl = h('input', { type: 'checkbox', checked: easy || null, onchange: () => { easy = easyTgl.checked; updatePreview(); } });
   const easyRow = h('label', { class: 'row', style: 'margin-top:12px;gap:10px;align-items:flex-start' },
     h('span', { class: 'switch' }, easyTgl, h('span', { class: 'knob' })),
     h('span', { class: 'small' }, 'It’s been a long time since I trained',
@@ -176,7 +181,7 @@ export function renderStart(pid, onDone, { restart = false } = {}) {
         'Adds 2 easy prep weeks before Week 1: your Week 1 sessions with 2 sets wherever the program says 3 or more. The full program starts after them.')));
 
   // --- "partway through": week + day + mark-before-as-done ----------------
-  const mid = h('details', { class: 'card', open: reconfig || null });
+  const mid = h('details', { class: 'card', open: (reconfig && !inPrep) || null });
   const weekSel = h('select', { class: 'sel' },
     ...Array.from({ length: program.weeks }, (_, i) =>
       h('option', { value: i + 1, selected: i + 1 === (reconfig ? currentWeek(pid) : 1) }, `Week ${i + 1}`)));
@@ -340,13 +345,15 @@ export function renderStart(pid, onDone, { restart = false } = {}) {
           const b = s.programs[pid];
           b.started = true;
           b.startedAt = restart ? Date.now() : (b.startedAt || Date.now());
-          const prep = !partway && easy;
+          // simple mode: the switch decides; partway: prep weeks stay as they were
+          const prep = partway ? !!bucket.setup.prepWeeks : easy;
           const start = dateIn.value || toISO(today);
           // with prep weeks, the date you picked is Prep 1 · Day 1 and Week 1 is 2 weeks later
           b.setup = { ...b.setup, anchorDay, dayMap: mapper.getMap(), weekStart: mapper.getWeekStart(),
-            anchorDate: prep ? toISO(new Date(isoOf(start).getTime() + 14 * DAY)) : start };
+            anchorDate: prep && !partway ? toISO(new Date(isoOf(start).getTime() + 14 * DAY)) : start };
           delete b.setup.easyStart;
-          if (prep) { b.setup.prepWeeks = 2; b.setup.prepMap = mapper.getMap(); } else { delete b.setup.prepWeeks; delete b.setup.prepMap; }
+          if (prep && !partway) { b.setup.prepWeeks = 2; b.setup.prepMap = b.setup.prepMap && inPrep ? b.setup.prepMap : mapper.getMap(); }
+          else if (!prep) { delete b.setup.prepWeeks; delete b.setup.prepMap; }
           // a fresh schedule: no per-week arrangements left over from before
           delete b.setup.mapHistory; delete b.setup.weekMaps; delete b.setup.weekSwaps;
           s.activeProgram = pid;
@@ -549,8 +556,11 @@ export function renderSettings(rerender) {
           if (mapper.getWeekStart() === weekStartWd(pid) && store.prog(pid).setup.anchorDate) {
             // Same week start: change the usual week from this week on, so the
             // weeks you already trained keep their days.
-            saveWeekArrangement(pid, currentWeek(pid), mapper.getMap(), 'every');
-            toast(`Weekdays updated from Week ${currentWeek(pid)} on`); rerender(); return;
+            const cw = currentWeek(pid);
+            const from = saveUsualWeek(pid, mapper.getMap());
+            toast(from > cw ? `Weekdays updated from next week (Week ${from}). To change this week, use 🗓 Organize this week.`
+              : `Weekdays updated from Week ${from} on`, 4200);
+            rerender(); return;
           }
           // A new week start moves the whole calendar, so it starts over clean.
           store.update((st) => {

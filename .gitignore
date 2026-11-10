@@ -1,2 +1,5 @@
 # generated at build time by scripts/gen-icons.mjs (also in the Pages workflow)
 icons/
+
+node_modules/
+.env*

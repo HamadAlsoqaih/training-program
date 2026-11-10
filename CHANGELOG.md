@@ -4,6 +4,19 @@ Every version of this app, from the first build to today. Newest first.
 
 ---
 
+## v15 — Notifications
+
+- **Timer notifications:** leave the app (or lock the phone) during a rest or
+  hold timer and you get a notification the moment it ends. Come back first
+  and it's cancelled — the open app rings by itself.
+- **Daily workout reminder** at your chosen time, only on your training days
+  (full rest days are skipped), in your phone's time zone.
+- Settings → Notifications: turn on, test, choose what you get, turn off.
+- Runs on Vercel with Upstash QStash (see README). On iPhone it needs iOS 16.4+
+  and the app opened from the Home Screen icon.
+
+---
+
 ## v14 — Easier weeks, safer logging, restart
 
 - **Forgotten workouts close by themselves.** A workout you never finished no

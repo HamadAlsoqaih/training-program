@@ -114,3 +114,25 @@ Deployment is automatic: every push runs the fidelity tests and publishes to the
 - Weekly body-weight log and trend
 - Daily nutrition checklist (2,500 kcal / 180–200 g protein / creatine)
 - Cross-device sync (needs a backend)
+
+
+## Notifications (Vercel)
+
+Rest/hold timers notify you when they end even with the phone locked, and a
+daily reminder fires on your training days. This needs the small server in
+`api/`, so it works on the Vercel deployment (not GitHub Pages).
+
+One-time setup in Vercel → your project:
+
+1. **Upstash QStash** connected to the project (Storage / Integrations). It adds
+   `QSTASH_TOKEN`, `QSTASH_CURRENT_SIGNING_KEY`, `QSTASH_NEXT_SIGNING_KEY`
+   (and `QSTASH_URL`).
+2. **Keys:** run `npm install && npm run keys`, then add
+   `VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY` under Settings → Environment
+   Variables. Never commit the private key.
+3. **Redeploy** (new variables only apply after a deploy).
+4. On the iPhone (iOS 16.4+): open the app **from the Home Screen icon** →
+   Settings → Notifications → Turn on → Allow → Send a test.
+
+Vercel settings: framework **Other**, branch **main**. `vercel.json` sets the
+build command (it generates the icons) and serves the repo root.

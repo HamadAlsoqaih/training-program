@@ -18,6 +18,7 @@ import { todayId, programStatus } from './schedule.js';
 import { DEFAULT_PROGRAM, PROGRAMS } from './program.js';
 import { onCountdown, extendCountdown, skipCountdown, fmtMs, acquireWakeLock, releaseWakeLock } from './timers.js';
 import { closeStaleSession } from './completion.js';
+import { initPush } from './push.js';
 import { renderDay, renderProgramGate } from './views/day.js';
 import { renderPrograms, renderProgram, renderPhase, renderWeek } from './views/programview.js';
 import { renderProgress } from './views/progress.js';
@@ -183,5 +184,6 @@ if ('serviceWorker' in navigator && location.protocol === 'https:') {
     navigator.serviceWorker.register('sw.js').catch(() => {});
   });
 }
+initPush();
 
 render();

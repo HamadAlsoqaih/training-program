@@ -1,5 +1,5 @@
 // Service worker — cache-first app shell for full offline use.
-const CACHE = 't15-v15';
+const CACHE = 't15-v16';
 const ASSETS = [
   './',
   './index.html',
@@ -23,6 +23,7 @@ const ASSETS = [
   './js/analytics.js',
   './js/report.js',
   './js/timers.js',
+  './js/push.js',
   './js/charts.js',
   './js/views/day.js',
   './js/views/programview.js',
@@ -49,7 +50,9 @@ self.addEventListener('activate', (e) => {
 
 // cache-first, network fallback (and refresh cache in background for HTML)
 self.addEventListener('fetch', (e) => {
-  if (e.request.method !== 'GET' || new URL(e.request.url).origin !== location.origin) return;
+  const url = new URL(e.request.url);
+  if (e.request.method !== 'GET' || url.origin !== location.origin) return;
+  if (url.pathname.includes('/api/')) return;   // the notification server is never cached
   e.respondWith(
     caches.match(e.request, { ignoreSearch: true }).then((cached) => {
       const fetched = fetch(e.request).then((res) => {
@@ -62,4 +65,21 @@ self.addEventListener('fetch', (e) => {
       return cached || fetched;
     })
   );
+});
+
+// Notifications sent by the server (api/send). A newer one with the same tag
+// replaces the old, so they never pile up.
+self.addEventListener('push', (e) => {
+  let d = {};
+  try { d = e.data ? e.data.json() : {}; } catch { /* plain text */ }
+  e.waitUntil(self.registration.showNotification(d.title || 'Training', {
+    body: d.body || '', tag: d.tag || undefined, renotify: !!d.tag,
+    icon: 'icons/icon-192.png', badge: 'icons/icon-192.png',
+  }));
+});
+// Tapping one opens the app, or brings it to the front.
+self.addEventListener('notificationclick', (e) => {
+  e.notification.close();
+  e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true })
+    .then((cs) => (cs.length ? cs[0].focus() : self.clients.openWindow('./'))));
 });

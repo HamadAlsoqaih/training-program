@@ -15,6 +15,9 @@ import {
   fmtDate, realToday, weekStartWd, deloadBlocks, saveWeekArrangement,
 } from '../schedule.js';
 import { whereAmISheet, openSheet, closeSheet } from './sheets.js';
+import {
+  PUSH_OK, pushState, pushOn, pushOff, sendTest, reminderSync, trainingWeekdays, onPushChange,
+} from '../push.js';
 
 export const ACCENTS = [
   ['#fbbf24', 'Amber'], ['#f97316', 'Orange'], ['#ef4444', 'Red'], ['#ec4899', 'Pink'],
@@ -325,6 +328,64 @@ export function renderStart(pid, onDone, { restart = false } = {}) {
 }
 
 // ---------------------------------------------------------------------------
+// Notifications card
+// ---------------------------------------------------------------------------
+let pushUnsub = null;
+function notificationsCard(rerender) {
+  const s = store.get().settings;
+  const N = pushState();
+  // redraw this screen when the subscription check finishes
+  pushUnsub?.(); pushUnsub = onPushChange(() => { if (location.hash.startsWith('#/settings')) rerender({ keepScroll: true }); });
+  const card = h('div', { class: 'card' }, h('div', { class: 'h2', style: 'font-size:14px;margin-bottom:6px' }, '🔔 Notifications'));
+  const line = (t) => h('div', { class: 'tiny faint', style: 'margin-bottom:8px' }, t);
+  const run = (fn, ok) => async () => {
+    try { await fn(); if (ok) toast(ok); } catch (e) { toast(e.message, 4200); }
+    rerender({ keepScroll: true });
+  };
+  if (!PUSH_OK) {
+    card.append(line('Open the app from its Home Screen icon (iPhone: Share → Add to Home Screen, iOS 16.4 or newer) to turn notifications on.'));
+    return card;
+  }
+  if (typeof Notification !== 'undefined' && Notification.permission === 'denied') {
+    card.append(line('Blocked. Turn them on in iPhone Settings › Notifications › Training, then come back.'));
+    return card;
+  }
+  if (N.sub === undefined || !N.ready) { card.append(line('Checking…')); return card; }
+  if (!N.sub) {
+    card.append(line(N.key
+      ? 'Get a notification when a rest timer ends while the phone is locked, and a daily reminder on training days.'
+      : 'The notification server isn’t set up on this site yet (it runs on the Vercel version of the app).'));
+    if (N.key) card.append(h('button', { class: 'btn primary block', onclick: run(pushOn, 'Notifications on 🔔') }, 'Turn on notifications'));
+    return card;
+  }
+  const tgl = (label, sub, key, def, after) => {
+    const input = h('input', {
+      type: 'checkbox', checked: s[key] ?? def,
+      onchange: () => { store.update((st) => { st.settings[key] = input.checked; }); after?.(); },
+    });
+    return h('div', { class: 'setrow2' },
+      h('div', { class: 'grow' }, h('div', { class: 'small', style: 'font-weight:700' }, label), sub ? h('div', { class: 'tiny faint' }, sub) : null),
+      h('label', { class: 'switch' }, input, h('span', { class: 'knob' })));
+  };
+  const days = trainingWeekdays().map((d) => WEEKDAY_NAMES[d].slice(0, 3)).join(', ');
+  card.append(...[
+    tgl('When a timer ends', 'Rest and hold timers, even with the phone locked or another app open', 'notifyTimer', true),
+    tgl('Daily workout reminder', days ? `On your training days: ${days}` : 'No training days left in this program', 'remindersOn', false,
+      run(() => reminderSync(true))),
+    s.remindersOn ? h('div', { class: 'row', style: 'margin-top:6px' },
+      h('div', { class: 'small grow', style: 'font-weight:700' }, 'Reminder time'),
+      h('input', {
+        class: 'txt', type: 'time', style: 'width:130px', value: s.reminderTime || '17:00',
+        onchange: (e) => { store.update((st) => { st.settings.reminderTime = e.target.value; }); run(() => reminderSync(true), 'Reminder time saved')(); },
+      })) : null,
+    h('div', { class: 'row', style: 'gap:8px;margin-top:12px' },
+      h('button', { class: 'btn sm grow', onclick: run(sendTest, 'Sent — lock the phone, it arrives in ~5 seconds') }, 'Send a test'),
+      h('button', { class: 'btn sm grow', onclick: run(pushOff, 'Notifications off') }, 'Turn off')),
+  ].filter(Boolean));
+  return card;
+}
+
+// ---------------------------------------------------------------------------
 // Settings
 // ---------------------------------------------------------------------------
 export function renderSettings(rerender) {
@@ -479,24 +540,7 @@ export function renderSettings(rerender) {
       toggleRow('Keep screen awake', 'Screen stays on during an active workout (iOS 16.4+)', 'wakeLock'),
     ),
 
-    h('div', { class: 'card' },
-      h('div', { class: 'h2', style: 'font-size:14px' }, '🔔 Workout reminder'),
-      toggleRow('Enable reminders', 'Best-effort on iOS — requires the app installed to your Home Screen (iOS 16.4+). A daily iPhone Clock alarm is the reliable backup.', 'remindersOn'),
-      h('div', { class: 'row', style: 'margin-top:6px' },
-        h('div', { class: 'small grow', style: 'font-weight:700' }, 'Reminder time'),
-        h('input', {
-          class: 'txt', type: 'time', style: 'width:130px', value: s.settings.reminderTime,
-          onchange: (e) => store.update((st) => { st.settings.reminderTime = e.target.value; }),
-        })),
-      h('button', {
-        class: 'btn sm block', style: 'margin-top:10px',
-        onclick: async () => {
-          if (!('Notification' in window)) return alert('Notifications are not supported here. Install the app to your Home Screen first (Share → Add to Home Screen).');
-          const p = await Notification.requestPermission();
-          toast(p === 'granted' ? 'Notifications allowed' : 'Notifications not allowed');
-        },
-      }, 'Allow notifications'),
-    ),
+    notificationsCard(rerender),
 
     h('div', { class: 'card' },
       h('div', { class: 'h2', style: 'font-size:14px;margin-bottom:6px' }, '🦵 Squat variation (PT clearance)'),

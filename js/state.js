@@ -52,7 +52,7 @@ const DEFAULTS = () => ({
   session: null,
   settings: {
     sound: true, wakeLock: true, autoRest: true,
-    reminderTime: '17:00', remindersOn: false,
+    reminderTime: '17:00', remindersOn: false, notifyTimer: true, reminderSig: '',
     vo2SwapAck: false, squatVariation: '',
     backupPromptWeek: 0,
     accent: '#fbbf24',      // theme colour (settings → appearance)

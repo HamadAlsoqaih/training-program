@@ -1,8 +1,30 @@
 {
   "buildCommand": "node scripts/gen-icons.mjs",
   "outputDirectory": ".",
+  "git": {
+    "deploymentEnabled": {
+      "gh-pages": false,
+      "claude/15-week-training-program-7lk9ni": false
+    }
+  },
   "headers": [
-    { "source": "/sw.js", "headers": [ { "key": "Cache-Control", "value": "no-cache" } ] },
-    { "source": "/(.*)", "headers": [ { "key": "X-Content-Type-Options", "value": "nosniff" } ] }
+    {
+      "source": "/sw.js",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-cache"
+        }
+      ]
+    },
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        }
+      ]
+    }
   ]
 }

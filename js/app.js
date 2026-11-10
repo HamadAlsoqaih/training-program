@@ -17,7 +17,7 @@ import * as store from './state.js';
 import { todayId, programStatus } from './schedule.js';
 import { DEFAULT_PROGRAM, PROGRAMS } from './program.js';
 import { onCountdown, extendCountdown, skipCountdown, fmtMs, acquireWakeLock, releaseWakeLock } from './timers.js';
-import { closeStaleSession } from './completion.js';
+import { closeStaleSession, migrateEasyStart } from './completion.js';
 import { initPush } from './push.js';
 import { renderDay, renderProgramGate } from './views/day.js';
 import { renderPrograms, renderProgram, renderPhase, renderWeek } from './views/programview.js';
@@ -127,6 +127,8 @@ function closeForgotten() {
     : 'Closed a workout with nothing logged', 4200);
   return true;
 }
+// phones that started with the first easy-start version move to prep weeks
+if (migrateEasyStart().length) toast('Easy start is now 2 prep weeks before Week 1 — your program starts after them', 5000);
 closeForgotten();
 setInterval(() => { if (closeForgotten()) render({ keepScroll: true }); }, 60e3);
 if (store.get().session) acquireWakeLock();

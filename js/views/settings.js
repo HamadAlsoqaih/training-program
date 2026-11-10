@@ -173,7 +173,7 @@ export function renderStart(pid, onDone, { restart = false } = {}) {
     h('span', { class: 'switch' }, easyTgl, h('span', { class: 'knob' })),
     h('span', { class: 'small' }, 'It’s been a long time since I trained',
       h('span', { class: 'tiny faint', style: 'display:block' },
-        'Easier first 2 weeks: 2 sets wherever the program says 3 or more, and no “add weight” until week 3.')));
+        'Adds 2 easy prep weeks before Week 1: your Week 1 sessions with 2 sets wherever the program says 3 or more. The full program starts after them.')));
 
   // --- "partway through": week + day + mark-before-as-done ----------------
   const mid = h('details', { class: 'card', open: reconfig || null });
@@ -227,8 +227,10 @@ export function renderStart(pid, onDone, { restart = false } = {}) {
       ? `${when} is <b>Week ${week} · Day ${dayN} (${WEEKDAY_NAMES[wdOfPos(dayN)]})</b> — ${slots[mapper.slotAt(dayN - 1) - 1]}.`
         + (wdOk ? '' : `<br><b>Heads up:</b> that date is a ${WEEKDAY_NAMES[chosen.getDay()]}, but Day ${dayN} is your ${WEEKDAY_NAMES[wdOfPos(dayN)]}. Pick the matching day or change the date.`)
         + (seedTgl.checked && (week > 1 || dayN > 1) ? '<br>Everything before it will be marked <b>done (assumed)</b>.' : '')
-      : `Week 1 starts ${when}. Your week runs <b>${WEEKDAY_NAMES[ws]} → ${WEEKDAY_NAMES[(ws + 6) % 7]}</b>.`
-        + (easy ? '<br>🌱 Weeks 1–2 are easy weeks.' : ''))
+      : (easy
+        ? `🌱 Prep weeks start ${when}. <b>Week 1</b> starts ${fmtDate(new Date(chosen.getTime() + 14 * DAY))}.`
+        : `Week 1 starts ${when}.`)
+        + ` Your week runs <b>${WEEKDAY_NAMES[ws]} → ${WEEKDAY_NAMES[(ws + 6) % 7]}</b>.`)
       + (restart ? `<br>Your ${Object.keys(bucket.days).length ? 'logged workouts move to “earlier run”: they stay in each exercise’s history, and the weeks start fresh' : 'weeks start fresh'}.` : '')
       + (!restart && deloadBlocks(pid).some((b) => b.at >= (week - 1) * 7)
         ? '<br>A deload week you added earlier is in front of this start — it will be removed when you save (anything you logged in it is kept).' : '');
@@ -338,9 +340,13 @@ export function renderStart(pid, onDone, { restart = false } = {}) {
           const b = s.programs[pid];
           b.started = true;
           b.startedAt = restart ? Date.now() : (b.startedAt || Date.now());
-          b.setup = { ...b.setup, anchorDate: dateIn.value || toISO(today), anchorDay,
-            dayMap: mapper.getMap(), weekStart: mapper.getWeekStart() };
-          if (!partway && easy) b.setup.easyStart = true; else delete b.setup.easyStart;
+          const prep = !partway && easy;
+          const start = dateIn.value || toISO(today);
+          // with prep weeks, the date you picked is Prep 1 · Day 1 and Week 1 is 2 weeks later
+          b.setup = { ...b.setup, anchorDay, dayMap: mapper.getMap(), weekStart: mapper.getWeekStart(),
+            anchorDate: prep ? toISO(new Date(isoOf(start).getTime() + 14 * DAY)) : start };
+          delete b.setup.easyStart;
+          if (prep) b.setup.prepWeeks = 2; else delete b.setup.prepWeeks;
           // a fresh schedule: no per-week arrangements left over from before
           delete b.setup.mapHistory; delete b.setup.weekMaps; delete b.setup.weekSwaps;
           s.activeProgram = pid;

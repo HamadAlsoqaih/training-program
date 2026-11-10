@@ -45,6 +45,7 @@ function applyOverride(item, ov) {
 // own per-day edits still win. Easy weeks never count as "ready to add weight".
 export const EASY_WEEKS = 2;
 export function isEasyDay(pid, dayId) {
+  if (/^e[1-9]d[1-7]$/.test(dayId || '')) return true;      // prep weeks are always easy
   if (!store.setupOf(pid).easyStart || isDeloadId(dayId)) return false;
   const m = /^w(\d+)d/.exec(dayId || '');
   return !!m && +m[1] <= EASY_WEEKS;
@@ -579,7 +580,7 @@ export const hasCustomPlan = (pid, dayId) => {
 // replayed week starts genuinely clean and no logged set is lost.
 export function deloadPlanFor(pid = store.activePid(), now = new Date()) {
   const slot = todaySlot(pid, now);
-  if (slot.state !== 'active' || slot.deload) return null;
+  if (slot.state !== 'active' || slot.deload || slot.prep) return null;
   let week = Math.floor(slot.index / 7) + 1;
   let d0 = (slot.index % 7) + 1;
   // Already trained today? Then today counts as done and the deload starts
@@ -732,7 +733,43 @@ export function restartProgram(pid) {
     p.startedAt = Date.now();
     const su = p.setup;
     su.deloads = [];
-    delete su.weekSwaps; delete su.weekMaps; delete su.mapHistory; delete su.easyStart;
+    delete su.weekSwaps; delete su.weekMaps; delete su.mapHistory; delete su.easyStart; delete su.prepWeeks;
     if (s.session?.pid === pid) s.session = null;
   });
+}
+
+// ---------------------------------------------------------------------------
+// Old "easy start" → prep weeks
+// ---------------------------------------------------------------------------
+// The first version of easy start made Weeks 1–2 of the program the easy
+// weeks. It is now 2 prep weeks BEFORE Week 1. A program still inside those
+// two weeks converts: what was Week 1 / Week 2 becomes Prep 1 / Prep 2 (same
+// dates, logs moved along), and the program's own Week 1 starts 2 weeks later.
+// Past Week 2 there's nothing left to gain, so it keeps the old behaviour.
+export function migrateEasyStart(now = new Date()) {
+  const moved = [];
+  for (const program of PROGRAM_LIST) {
+    const pid = program.id;
+    const su = store.setupOf(pid);
+    if (!su.easyStart || su.prepWeeks || !su.anchorDate || !/^w1d/.test(su.anchorDay || '')) continue;
+    if ((su.deloads || []).length || todaySlot(pid, now).index >= 14) continue;
+    store.update((s) => {
+      const b = s.programs[pid];
+      const [y, m, d] = b.setup.anchorDate.split('-').map(Number);
+      b.setup.anchorDate = toISO(new Date(y, m - 1, d + 14, 12));
+      b.setup.prepWeeks = 2;
+      delete b.setup.easyStart;
+      for (const id of Object.keys(b.days)) {
+        const k = /^w([12])d([1-7])$/.exec(id);
+        if (!k) continue;
+        const to = `e${k[1]}d${k[2]}`;
+        if (!b.days[to]) b.days[to] = b.days[id];
+        delete b.days[id];
+      }
+      const sk = s.session?.pid === pid && /^w([12])d([1-7])$/.exec(s.session.dayId);
+      if (sk) s.session.dayId = `e${sk[1]}d${sk[2]}`;
+    });
+    moved.push(pid);
+  }
+  return moved;
 }

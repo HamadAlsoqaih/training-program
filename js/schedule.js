@@ -186,10 +186,38 @@ function calToday(now = new Date(), pid = activePid()) {
 
 // Everything today: which program day is due, and whether a deload is running.
 //   { state: 'before'|'active'|'over', index, deload?: { block, d, id } }
+// --- prep weeks ---------------------------------------------------------------
+// "Ease in with 2 prep weeks" puts extra weeks on the calendar BEFORE Week 1.
+// They replay your Week 1 sessions lightly (see isEasyDay in completion.js) and
+// sit outside the program's own weeks: the program itself is untouched and
+// simply starts later. They live at calendar slots -7·P … -1, before index 0.
+//   prep day id: "e1d3" = prep week 1, the session in slot 3 of Week 1
+export const prepWeeks = (pid = activePid()) => setupOf(pid).prepWeeks || 0;
+export const prepIdParts = (id) => {
+  const m = /^e([1-9])d([1-7])$/.exec(id || '');
+  return m ? { n: +m[1], slot: +m[2] } : null;
+};
+export const isPrepId = (id) => !!prepIdParts(id);
+export function prepIdAtCal(c, pid = activePid()) {
+  const P = prepWeeks(pid) * 7;
+  if (!(c < 0 && c >= -P)) return null;
+  const k = c + P;
+  return `e${Math.floor(k / 7) + 1}d${slotAtPos(k % 7, 1, pid)}`;
+}
+export function calOfPrepId(id, pid = activePid()) {
+  const k = prepIdParts(id);
+  return k ? (k.n - 1) * 7 + posOfSlot(k.slot, 1, pid) - prepWeeks(pid) * 7 : null;
+}
+// the seven prep day ids of prep week n, in calendar order
+export const prepWeekIds = (n, pid = activePid()) =>
+  Array.from({ length: 7 }, (_, p) => prepIdAtCal((n - 1) * 7 + p - prepWeeks(pid) * 7, pid));
+
 export function todaySlot(pid = activePid(), now = new Date()) {
   const slot = slotAtCal(calToday(now, pid), pid);
   const index = slot.kind === 'deload' ? slot.block.at : slot.index;
   const n = totalDays(pid);
+  const prepId = slot.kind === 'program' ? prepIdAtCal(index, pid) : null;
+  if (prepId) return { state: 'active', index, prep: { id: prepId, n: prepIdParts(prepId).n } };
   const state = index < 0 ? 'before' : index >= n ? 'over' : 'active';
   if (slot.kind === 'deload' && state === 'active') {
     return { state, index, deload: { block: slot.block, d: slot.d, id: deloadDayId(slot.block.id, slot.d) } };
@@ -209,6 +237,7 @@ export function todayIndexRaw(now = new Date(), pid = activePid()) {
 export const todayIndex = (now, pid = activePid()) => clampIndex(todayIndexRaw(now, pid), pid);
 export function todayId(now, pid = activePid()) {
   const slot = todaySlot(pid, now);
+  if (slot.prep) return slot.prep.id;
   return slot.deload ? slot.deload.id : indexToId(clampIndex(slot.index, pid), pid);
 }
 // Days that have actually come due. During a deload nothing new has, so this
@@ -216,6 +245,7 @@ export function todayId(now, pid = activePid()) {
 // just because you took a planned light week.
 export function elapsedIndex(pid = activePid(), now = new Date()) {
   const slot = todaySlot(pid, now);
+  if (slot.prep) return -1;               // nothing of the program itself is due yet
   return slot.deload ? slot.index - 1 : clampIndex(slot.index, pid);
 }
 export const isProgramOver = (now, pid = activePid()) => todayIndexRaw(now, pid) >= totalDays(pid);
@@ -228,10 +258,13 @@ export const isBeforeStart = (now, pid = activePid()) => todayIndexRaw(now, pid)
 export function programStatus(pid = activePid(), now = new Date()) {
   const raw = todayIndexRaw(now, pid);
   const n = totalDays(pid);
-  const startDate = dateForIndex(0, pid);
+  const P = prepWeeks(pid) * 7;
+  // the countdown runs to the first prep day when there are prep weeks
+  const startDate = P ? dateForCal(-P, pid) : dateForIndex(0, pid);
   const endDate = dateForIndex(n - 1, pid);
   const eff = effectiveDate(now, pid);
   const dayDiff = (a, b) => Math.round((a - b) / DAY_MS);
+  if (raw < 0 && raw >= -P) return { state: 'active', rawIndex: raw, startDate, endDate, prep: true };
   if (raw < 0) {
     return { state: 'before', rawIndex: raw, startDate, endDate,
       daysUntil: startDate ? Math.max(1, dayDiff(startDate, eff)) : 1 };
@@ -269,6 +302,7 @@ export function dateForIndex(i, pid = activePid()) {
 
 // Works for both id shapes.
 export function dateForId(id, pid = activePid()) {
+  if (isPrepId(id)) return dateForCal(calOfPrepId(id, pid), pid);
   const k = deloadIdParts(id);
   if (k) {
     const b = deloadBlock(k.block, pid);
@@ -282,6 +316,7 @@ export function dateForId(id, pid = activePid()) {
 // Day id → its calendar slot, and back. Used for prev/next navigation, which
 // must step through inserted deload days as if they were ordinary days.
 export function calIndexOfDayId(pid, dayId) {
+  if (isPrepId(dayId)) return calOfPrepId(dayId, pid);
   const k = deloadIdParts(dayId);
   if (k) {
     const b = deloadBlock(k.block, pid);
@@ -292,6 +327,8 @@ export function calIndexOfDayId(pid, dayId) {
 }
 
 export function dayIdAtCal(pid, c) {
+  const prep = prepIdAtCal(c, pid);
+  if (prep) return prep;
   const slot = slotAtCal(c, pid);
   if (slot.kind === 'deload') return deloadDayId(slot.block.id, slot.d);
   return indexToId(clampIndex(slot.index, pid), pid);

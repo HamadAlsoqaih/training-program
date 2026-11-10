@@ -21,7 +21,7 @@ import {
   dateForId, fmtDate, weekdayName, progOfWeekday, toISO, idToIndex, indexToId, todayIndex,
   WEEKDAY_NAMES, weekSwaps, currentWeek, todaySlot, todayId, deloadDayId, weekIdsInOrder,
   mapForWeek, usualMapForWeek, saveWeekArrangement, clearWeekArrangement, isCustomWeek,
-  weekStartWd, dateForIndex, realToday,
+  weekStartWd, dateForIndex, realToday, prepWeeks, prepWeekIds,
 } from '../schedule.js';
 import { fmtMs } from '../timers.js';
 import { lineChart } from '../charts.js';
@@ -403,8 +403,10 @@ export function weekOverviewSheet(pid, rerender) {
   const week = block ? block.week : currentWeek(pid);
   const todayIdNow = todayId(undefined, pid);
 
+  const prep = slot.prep?.n || 0;
   const ids = [];
-  if (block) for (let d = 1; d <= 7; d++) ids.push(deloadDayId(block.id, d));
+  if (prep) ids.push(...prepWeekIds(prep, pid));
+  else if (block) for (let d = 1; d <= 7; d++) ids.push(deloadDayId(block.id, d));
   else ids.push(...weekIdsInOrder(week, pid));
 
   const rows = ids.map((id, i) => {
@@ -440,11 +442,12 @@ export function weekOverviewSheet(pid, rerender) {
   }).filter(Boolean);
 
   openSheet(
-    h('div', { class: 'h2', style: 'margin-bottom:2px' }, block ? 'Deload week' : `Week ${week}`),
+    h('div', { class: 'h2', style: 'margin-bottom:2px' },
+      prep ? `🌱 Prep week ${prep} of ${prepWeeks(pid)}` : block ? 'Deload week' : `Week ${week}`),
     h('div', { class: 'tiny faint', style: 'margin-bottom:12px' },
-      block ? `Then Week ${block.week} starts again from Day 1` : getProgram(pid).name),
+      prep ? 'Week 1 starts after the prep weeks' : block ? `Then Week ${block.week} starts again from Day 1` : getProgram(pid).name),
     ...rows,
-    block ? null : h('button', {
+    block || prep ? null : h('button', {
       class: 'btn block', style: 'margin-top:6px',
       onclick: () => organizeWeekSheet(pid, week, rerender),
     }, '🗓 Organize this week'),

@@ -53,6 +53,8 @@ export function getWeek(pid, week) {
 
 export function getDay(pid, dayId) {
   if (deloadIdParts(dayId)) return getDeloadDay(pid, dayId);
+  const pm = /^e([1-9])d([1-7])$/.exec(dayId || '');
+  if (pm) return getPrepDay(pid, dayId, +pm[1], +pm[2]);
   const m = /^w(\d+)d([1-7])$/.exec(dayId || '');
   if (!m) return null;
   const week = getWeek(pid, +m[1]);
@@ -93,6 +95,21 @@ export function getDeloadDay(pid, dayId) {
     sections: light ? deloadSections(src.sections) : src.sections,
   };
   deloadCache.set(key, { block, day });
+  return day;
+}
+
+// --- prep weeks (before Week 1) ---------------------------------------------
+// A prep day is that Week 1 session again, under its own id so its log never
+// mixes with the real Week 1. The lighter volume is applied in plannedDay().
+const prepCache = new Map();
+function getPrepDay(pid, dayId, n, slot) {
+  const key = `${pid}:${dayId}`;
+  const src = getDay(pid, `w1d${slot}`);
+  if (!src) return null;
+  const hit = prepCache.get(key);
+  if (hit && hit.src === src) return hit.day;
+  const day = { ...src, id: dayId, week: null, prep: n };
+  prepCache.set(key, { src, day });
   return day;
 }
 

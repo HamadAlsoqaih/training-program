@@ -27,7 +27,7 @@ import {
   idToIndex, indexToId, clampIndex, todayId, todayIndex, dateForId, fmtDate,
   weekdayName, isSwapped, programStatus, realToday, toISO,
   todaySlot, isDeloadId, deloadIdParts, deloadBlock, deloadLength, deloadDayId,
-  calIndexOfDayId, dayIdAtCal, lastCalIndex, currentWeek, WEEKDAY_NAMES,
+  calIndexOfDayId, dayIdAtCal, lastCalIndex, currentWeek, WEEKDAY_NAMES, prepWeeks,
 } from '../schedule.js';
 import {
   startSession, pauseSession, resumeSession, finishSession, discardSession, sessionElapsedMs,
@@ -75,6 +75,7 @@ export function renderDay(pid, dayId, rerender) {
   // and navigation; it has no program index of its own.
   const dl = deloadIdParts(dayId);
   const block = dl ? deloadBlock(dl.block, pid) : null;
+  const prep = day.prep || 0;                 // a prep week before Week 1
   const srcWeek = day.week ?? block?.week ?? 1;
   const index = dl ? (block?.at ?? 0) : idToIndex(dayId, pid);
   const week = getWeek(pid, srcWeek);
@@ -93,12 +94,13 @@ export function renderDay(pid, dayId, rerender) {
   container.append(h('div', { class: 'dayhead' },
     h('div', { class: 'nav' },
       h('button', {
-        class: 'navbtn', disabled: !dl && index === 0,
+        class: 'navbtn', disabled: calIndexOfDayId(pid, dayId) <= -prepWeeks(pid) * 7,
         onclick: () => { location.hash = `#/day/${pid}/${stepDay(pid, dayId, -1)}`; },
       }, '‹'),
       h('div', { class: 'center grow' },
         h('a', { class: 'h1', style: 'display:block', href: `#/week/${pid}/${srcWeek}` },
-          dl ? `Deload · ${dateForId(dayId, pid) ? WEEKDAY_NAMES[dateForId(dayId, pid).getDay()] : weekdayName(day.d, null, pid)}`
+          prep ? `Prep ${prep} of ${prepWeeks(pid)} · ${dateForId(dayId, pid) ? WEEKDAY_NAMES[dateForId(dayId, pid).getDay()] : weekdayName(day.d, 1, pid)}`
+          : dl ? `Deload · ${dateForId(dayId, pid) ? WEEKDAY_NAMES[dateForId(dayId, pid).getDay()] : weekdayName(day.d, null, pid)}`
              : `Week ${day.week} · ${weekdayName(day.d, day.week, pid)}`),
         h('div', { class: 'row', style: 'justify-content:center;gap:6px;margin-top:4px;flex-wrap:wrap' },
           h('span', { class: 'chip', style: `color:${week.phase.color};border-color:${week.phase.color}44` },
@@ -108,9 +110,9 @@ export function renderDay(pid, dayId, rerender) {
           isToday ? h('span', { class: 'chip accent' }, 'TODAY') : null,
           prog.status === 'done' ? h('span', { class: 'chip good' }, rec.auto ? '✓ done (assumed)' : '✓ done') : null,
           prog.status === 'skipped' ? h('span', { class: 'chip bad' }, 'skipped') : null,
-          !dl && isSwapped(day.week, day.d, pid) ? h('span', { class: 'chip info' }, '⇄ swapped') : null,
+          !dl && !prep && isSwapped(day.week, day.d, pid) ? h('span', { class: 'chip info' }, '⇄ swapped') : null,
           hasCustomPlan(pid, dayId) ? h('span', { class: 'chip info' }, '✎ edited') : null,
-          isEasyDay(pid, dayId) ? h('span', { class: 'chip good' }, '🌱 easy week') : null,
+          isEasyDay(pid, dayId) && !prep ? h('span', { class: 'chip good' }, '🌱 easy week') : null,
         ),
         isToday ? h('div', { class: 'row', style: 'justify-content:center;gap:10px;margin-top:6px' },
           h('button', {
@@ -142,6 +144,10 @@ export function renderDay(pid, dayId, rerender) {
       `Same sessions, one set each, and weights around 60% of your last. `
       + `${deloadLength(block)} day${deloadLength(block) > 1 ? 's' : ''} of it, then Week ${block.week} `
       + 'starts again from Day 1 at full volume. Cardio carries on as normal.'));
+  } else if (prep) {
+    container.append(h('div', { class: 'banner' },
+      h('div', { style: 'font-weight:700;margin-bottom:4px' }, `🌱 Prep week ${prep} of ${prepWeeks(pid)}`),
+      'Your Week 1 sessions, lighter: 2 sets wherever the program says 3 or more. Learn the movements and pick weights you could lift for a few more reps. Week 1 starts after the prep weeks.'));
   } else if (week.badge && !dl) {
     container.append(h('div', { class: `banner ${week.badge.includes('DELOAD') ? 'deload' : ''}` }, week.badge));
   }
@@ -149,7 +155,7 @@ export function renderDay(pid, dayId, rerender) {
     const advice = deloadAdviceBanner(pid, rerender);
     if (advice) container.append(advice);
   }
-  if (isToday && status.state === 'active' && !dl) {
+  if (isToday && status.state === 'active' && !dl && !prep) {
     const behind = todayIndex() - firstOpenIndex(pid);
     if (behind > 0) {
       container.append(h('div', { class: 'banner behind' },
@@ -988,7 +994,7 @@ function deloadAdviceBanner(pid, rerender) {
 // program days either side of it exactly as it does in real life.
 function stepDay(pid, dayId, dir) {
   const c = calIndexOfDayId(pid, dayId) + dir;
-  return dayIdAtCal(pid, Math.max(0, Math.min(lastCalIndex(pid), c)));
+  return dayIdAtCal(pid, Math.max(-prepWeeks(pid) * 7, Math.min(lastCalIndex(pid), c)));
 }
 
 // Deload sets are light on purpose. Prefill about 60% of what you last lifted,

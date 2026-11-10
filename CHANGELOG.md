@@ -4,6 +4,20 @@ Every version of this app, from the first build to today. Newest first.
 
 ---
 
+## v16 — Prep weeks
+
+- **"It's been a long time" now adds 2 prep weeks before Week 1** instead of
+  making Weeks 1–2 the easy ones. Prep weeks repeat your Week 1 sessions with
+  2 sets wherever the program says 3 or more; the full program starts after
+  them, so no program week is cut short.
+- Phones that started with the old easy start and are still in Weeks 1–2
+  switch automatically: those weeks become Prep 1–2 (same dates, logs kept)
+  and Week 1 starts two weeks later.
+- Prep weeks show as "Prep 1 of 2" and don't count toward the program's own
+  progress. No deload during prep.
+
+---
+
 ## v15 — Notifications
 
 - **Timer notifications:** leave the app (or lock the phone) during a rest or

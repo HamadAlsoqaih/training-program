@@ -1,6 +1,7 @@
 {
   "name": "training-program",
   "private": true,
+  "type": "module",
   "description": "The app needs no build. These packages are only for the notification server in api/.",
   "scripts": {
     "keys": "web-push generate-vapid-keys"

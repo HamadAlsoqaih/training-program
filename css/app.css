@@ -10,10 +10,10 @@
   --text: #edf1f7;
   --dim: #93a0b4;
   --faint: #5b6a80;
-  --accent: #fbbf24;        /* theme colour — overridden from Settings */
-  --accent-ink: #15130a;    /* text on top of the accent */
-  --accent-soft: rgba(251,191,36,.14);
-  --accent-line: rgba(251,191,36,.42);
+  --accent: #3b82f6;        /* theme colour — overridden from Settings */
+  --accent-ink: #ffffff;    /* text on top of the accent */
+  --accent-soft: rgba(59,130,246,.14);
+  --accent-line: rgba(59,130,246,.42);
   --good: #34d399;          /* done */
   --good-dim: rgba(52, 211, 153, .14);
   --warn: #fb923c;

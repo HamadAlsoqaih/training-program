@@ -1,10 +1,10 @@
-// Generates app icons (PNG) with zero dependencies — dark bg + amber bolt.
+// Generates app icons (PNG) with zero dependencies — dark bg + blue bolt.
 // Run: node scripts/gen-icons.mjs
 import { deflateSync } from 'node:zlib';
 import { writeFileSync, mkdirSync } from 'node:fs';
 
 const BG = [11, 15, 22];        // #0b0f16
-const BOLT = [251, 191, 36];    // #fbbf24
+const BOLT = [59, 130, 246];    // #3b82f6 (blue, the app's default colour)
 
 // bolt polygon in a 24×24 box
 const POLY = [[13.5, 1.5], [4, 14], [10.8, 14], [9.5, 22.5], [20, 9.5], [13, 9.5]];

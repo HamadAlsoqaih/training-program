@@ -21,8 +21,8 @@ import {
 } from '../push.js';
 
 export const ACCENTS = [
-  ['#fbbf24', 'Amber'], ['#f97316', 'Orange'], ['#ef4444', 'Red'], ['#ec4899', 'Pink'],
-  ['#a855f7', 'Purple'], ['#6366f1', 'Indigo'], ['#3b82f6', 'Blue'], ['#06b6d4', 'Cyan'],
+  ['#3b82f6', 'Blue'], ['#06b6d4', 'Cyan'], ['#6366f1', 'Indigo'], ['#a855f7', 'Purple'],
+  ['#ec4899', 'Pink'], ['#ef4444', 'Red'], ['#f97316', 'Orange'], ['#fbbf24', 'Amber'],
   ['#10b981', 'Green'], ['#84cc16', 'Lime'], ['#e5e7eb', 'White'],
 ];
 
@@ -492,7 +492,7 @@ export function renderSettings(rerender) {
       onclick: () => setAccent(hex),
     })));
   const colorIn = h('input', {
-    type: 'color', class: 'colorin', value: s.settings.accent || '#fbbf24',
+    type: 'color', class: 'colorin', value: s.settings.accent || '#3b82f6',
     oninput: () => setAccent(colorIn.value),
   });
 
@@ -524,7 +524,7 @@ export function renderSettings(rerender) {
       h('div', { class: 'row', style: 'margin-top:12px;gap:10px' },
         h('div', { class: 'grow small', style: 'font-weight:700' }, 'Custom colour'),
         colorIn,
-        h('button', { class: 'btn sm', onclick: () => setAccent('#fbbf24') }, 'Reset')),
+        h('button', { class: 'btn sm', onclick: () => setAccent('#3b82f6') }, 'Reset')),
     ),
 
     h('div', { class: 'card' },

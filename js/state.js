@@ -55,7 +55,8 @@ const DEFAULTS = () => ({
     reminderTime: '17:00', remindersOn: false, notifyTimer: true, reminderSig: '',
     vo2SwapAck: false, squatVariation: '',
     backupPromptWeek: 0,
-    accent: '#fbbf24',      // theme colour (settings → appearance)
+    accent: '#3b82f6',      // theme colour (settings → appearance)
+    accentV2: true,         // blue became the default (see hydrate)
     durOv: {}, restOv: {},  // sticky timer/rest overrides, key "exId@prescribed"
   },
   onboarded: false,
@@ -75,6 +76,16 @@ function load() {
   return parsed.version >= 2 ? hydrate(parsed) : migrateV1(parsed);
 }
 
+// The default colour went from amber to blue. A phone still on the old amber
+// default moves to blue once; picking amber yourself afterwards sticks.
+function migrateAccent(settings, saved) {
+  if (saved && !saved.accentV2) {
+    if (!saved.accent || saved.accent.toLowerCase() === '#fbbf24') settings.accent = '#3b82f6';
+    settings.accentV2 = true;
+  }
+  return settings;
+}
+
 // Fill in anything a newer app version added that an older save lacks.
 function hydrate(saved) {
   const base = DEFAULTS();
@@ -92,7 +103,7 @@ function hydrate(saved) {
   return {
     ...base, ...saved,
     programs,
-    settings: { ...base.settings, ...(saved.settings || {}) },
+    settings: migrateAccent({ ...base.settings, ...(saved.settings || {}) }, saved.settings),
     activeProgram: PROGRAM_LIST.some((p) => p.id === saved.activeProgram)
       ? saved.activeProgram : DEFAULT_PROGRAM,
   };
@@ -116,7 +127,7 @@ function migrateV1(old) {
     days: old.days || {},
     fatigue: old.fatigue || [],
   };
-  next.settings = { ...next.settings, ...(old.settings || {}) };
+  next.settings = migrateAccent({ ...next.settings, ...(old.settings || {}) }, old.settings || {});
   next.session = old.session ? { ...old.session, pid: DEFAULT_PROGRAM } : null;
   next.onboarded = !!old.setup?.done;
   next.activeProgram = DEFAULT_PROGRAM;

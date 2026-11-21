@@ -1,88 +1,114 @@
 // ============================================================================
 // dragsort.js — hold-and-drag reordering, the way a phone app does it.
 //
-// Press and hold a card for ~380 ms: it lifts, the other cards slide apart to
-// show where it will land, and releasing drops it there. Moving your finger
-// before the hold completes is treated as a scroll and cancels the drag, so
-// normal scrolling and tapping are unaffected.
+// Hold a card for ~⅓ s: the list shrinks to title bars, the card lifts under
+// your finger, the others slide apart to show where it will land, the page
+// scrolls by itself near the top/bottom edge, and releasing drops it there.
+// Moving before the hold completes is a scroll and cancels the drag. Long
+// presses never select text or open the iPhone callout.
 //
-// Only transforms are animated during the drag (no re-render, no layout
-// thrash); the new order is committed once, on release.
+// Only transforms move during the drag (no re-render); the new order is
+// committed once, on release.
 // ============================================================================
-const HOLD_MS = 380;
+const HOLD_MS = 320;
 const MOVE_CANCEL = 10;   // px of movement before the hold that means "scroll"
+const EDGE = 80;          // px from the top/bottom where the page scrolls by itself
 
+// Press and hold a card: every card in the list shrinks to its title bar so
+// the list is short, the held card lifts under your finger and the others
+// make room as you move. Near the top or bottom edge the page scrolls by
+// itself. Release drops it. A quick move before the hold is a normal scroll.
 export function makeSortable(list, { onCommit, handleFilter } = {}) {
   let st = null;
+  const prevent = (e) => { if (st?.active) e.preventDefault(); };
 
   const cleanup = () => {
     if (!st) return;
     clearTimeout(st.timer);
+    cancelAnimationFrame(st.raf);
     if (st.active) {
-      list.classList.remove('sorting');
       for (const it of st.items) { it.el.style.transform = ''; it.el.style.transition = ''; }
       st.el.classList.remove('drag-lift');
       st.el.style.zIndex = '';
+      list.classList.remove('sorting', 'compact');
+      document.documentElement.classList.remove('sorting-now');
+      // put the card back where your finger was, now that the list is full size again
+      const r = st.el.getBoundingClientRect();
+      window.scrollBy(0, r.top + r.height / 2 - st.y);
     }
     try { st.el.releasePointerCapture?.(st.id); } catch { /* already released */ }
     window.removeEventListener('pointermove', onMove);
     window.removeEventListener('pointerup', onUp);
     window.removeEventListener('pointercancel', cleanup);
+    window.removeEventListener('touchmove', prevent);
     st = null;
   };
 
-  const begin = () => {
-    // measure once — everything after this is pure transform
-    list.classList.add('sorting');
-    const kids = [...list.children];
-    st.items = kids.map((el) => {
+  // positions in PAGE coordinates, so scrolling mid-drag doesn't confuse them
+  const measure = () => {
+    st.items = [...list.children].map((el) => {
       const r = el.getBoundingClientRect();
-      return { el, top: r.top, h: r.height + 8 /* card gap */, mid: r.top + r.height / 2 };
+      return { el, top: r.top + window.scrollY, h: r.height, mid: r.top + window.scrollY + r.height / 2 };
     });
-    st.from = kids.indexOf(st.el);
+    const a = st.items[0], b = st.items[1];
+    st.gap = a && b ? Math.max(0, b.top - (a.top + a.h)) : 8;
+  };
+
+  const begin = () => {
+    document.documentElement.classList.add('sorting-now');
+    window.getSelection?.()?.removeAllRanges();
+    list.classList.add('sorting', 'compact');      // every card down to its title bar
+    st.el.classList.add('drag-lift');
+    st.el.style.zIndex = '40';            // above the sticky timer bar
+    measure();
+    st.from = st.items.findIndex((it) => it.el === st.el);
     st.to = st.from;
     st.active = true;
-    st.el.classList.add('drag-lift');
-    st.el.style.zIndex = '5';
+    layout();
     if (navigator.vibrate) navigator.vibrate(8);   // Android only; iOS ignores
+    st.raf = requestAnimationFrame(edgeScroll);
+  };
+
+  // the held card follows the finger; the others slide to show where it lands
+  const layout = () => {
+    const fy = st.y + window.scrollY;
+    const self = st.items[st.from];
+    st.el.style.transform = `translateY(${fy - self.mid}px) scale(1.03)`;
+    let to = 0;
+    st.items.forEach((it, i) => { if (i !== st.from && it.mid < fy) to++; });
+    if (to === st.to) return;
+    st.to = to;
+    const h = self.h + st.gap;
+    st.items.forEach((it, i) => {
+      if (i === st.from) return;
+      let shift = 0;
+      if (st.from < to && i > st.from && i <= to) shift = -h;
+      else if (st.from > to && i < st.from && i >= to) shift = h;
+      it.el.style.transition = 'transform .16s ease';
+      it.el.style.transform = shift ? `translateY(${shift}px)` : '';
+    });
+  };
+
+  // near an edge: scroll, faster the closer you are
+  const edgeScroll = () => {
+    if (!st?.active) return;
+    const bottom = window.innerHeight - 110;       // above the tab bar / timer bar
+    let v = 0;
+    if (st.y < EDGE) v = -Math.ceil((EDGE - st.y) / 6);
+    else if (st.y > bottom - EDGE) v = Math.ceil((st.y - (bottom - EDGE)) / 6);
+    if (v) { window.scrollBy(0, v); layout(); }
+    st.raf = requestAnimationFrame(edgeScroll);
   };
 
   const onMove = (e) => {
     if (!st) return;
-    const dy = e.clientY - st.y0;
     if (!st.active) {
-      if (Math.abs(dy) > MOVE_CANCEL || Math.abs(e.clientX - st.x0) > MOVE_CANCEL) cleanup();
+      if (Math.abs(e.clientY - st.y0) > MOVE_CANCEL || Math.abs(e.clientX - st.x0) > MOVE_CANCEL) cleanup();
       return;
     }
     e.preventDefault();
-    st.el.style.transform = `translateY(${dy}px)`;
-
-    // Where would it land? Compare the dragged card's centre against each
-    // neighbour's centre — cards on this screen vary a lot in height, so a
-    // fixed row height would drop things in the wrong place.
-    const self = st.items[st.from];
-    const h = self.h;
-    const centre = self.mid + dy;
-    let to = st.from;
-    for (let i = st.from + 1; i < st.items.length; i++) {
-      if (centre > st.items[i].mid) to = i; else break;
-    }
-    if (to === st.from) {
-      for (let i = st.from - 1; i >= 0; i--) {
-        if (centre < st.items[i].mid) to = i; else break;
-      }
-    }
-    if (to !== st.to) {
-      st.to = to;
-      st.items.forEach((it, i) => {
-        if (i === st.from) return;
-        let shift = 0;
-        if (st.from < to && i > st.from && i <= to) shift = -h;
-        else if (st.from > to && i < st.from && i >= to) shift = h;
-        it.el.style.transition = 'transform .16s ease';
-        it.el.style.transform = shift ? `translateY(${shift}px)` : '';
-      });
-    }
+    st.y = e.clientY;
+    layout();
   };
 
   const onUp = () => {
@@ -112,7 +138,7 @@ export function makeSortable(list, { onCommit, handleFilter } = {}) {
     if (!el || el === list || !el.hasAttribute?.('data-sortable')) return;
     if (handleFilter && !handleFilter(el)) return;
 
-    st = { el, id: e.pointerId, x0: e.clientX, y0: e.clientY, active: false, timer: null };
+    st = { el, id: e.pointerId, x0: e.clientX, y0: e.clientY, y: e.clientY, active: false, timer: null, raf: 0 };
     st.timer = setTimeout(() => {
       if (!st) return;
       try { el.setPointerCapture(e.pointerId); } catch { /* not capturable */ }
@@ -122,7 +148,13 @@ export function makeSortable(list, { onCommit, handleFilter } = {}) {
     window.addEventListener('pointermove', onMove, { passive: false });
     window.addEventListener('pointerup', onUp);
     window.addEventListener('pointercancel', cleanup);
+    // iPhone scrolls on touchmove whatever pointermove does: once the card is
+    // lifted, the page must not scroll under it (edge scrolling does that)
+    window.addEventListener('touchmove', prevent, { passive: false });
   });
+  // a long press must not select text or open the iPhone callout
+  list.addEventListener('contextmenu', (e) => { if (!e.target.closest('input, textarea')) e.preventDefault(); });
+  list.addEventListener('selectstart', (e) => { if (!e.target.closest?.('input, textarea')) e.preventDefault(); });
 
   return cleanup;
 }

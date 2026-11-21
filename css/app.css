@@ -600,6 +600,19 @@ body.video-open { overflow: hidden; }
 .sec-list.sorting { content-visibility: visible; }
 .sec-list.sorting > * { content-visibility: visible; }
 .sec-list.sorting .ex { transition: transform .16s ease; }
+/* while dragging: every card down to its title bar, so moves are short */
+.sec-list.compact .ex > :not(.ex-head),
+.sec-list.compact .ex .ex-note, .sec-list.compact .ex .ex-icons,
+.sec-list.compact .ss-group .ss-label { display: none !important; }
+.sec-list.compact .ex { padding-top: 10px; padding-bottom: 10px; }
+.sec-list.sorting > :not(.drag-lift) { opacity: .65; }
+/* long-pressing a card never selects text or opens the iPhone callout */
+.sec-list .ex, .sec-list .ss-group {
+  -webkit-user-select: none; user-select: none;
+  -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent;
+}
+.sec-list input, .sec-list textarea { -webkit-user-select: text; user-select: text; }
+html.sorting-now, html.sorting-now * { -webkit-user-select: none !important; user-select: none !important; -webkit-touch-callout: none !important; }
 .drag-lift {
   position: relative;
   transition: none !important;

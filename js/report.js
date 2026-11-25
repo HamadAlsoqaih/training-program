@@ -8,6 +8,7 @@
 import { getProgram, getDay, totalDays, totalWeeks, EX } from './program.js';
 import * as store from './state.js';
 import { historyIndex, dayProgress, weekProgress, bestWeight } from './completion.js';
+import { bestBox, boxDir } from './fields.js';
 import { indexToId, dateForIndex, dateForId, toISO, deloadBlocks } from './schedule.js';
 import { jumpVolumeByWeek, jumpContactsForDay, isJump } from './analytics.js';
 
@@ -82,6 +83,9 @@ export function buildProgramReport(pid) {
       volumeKg: round(vol), bestWeightKg: best,
       firstWeightKg: first, lastWeightKg: lastW,
       gainKg: first != null && lastW != null ? round(lastW - first) : null,
+      // box height, in this exercise's own direction (higher or lower is better)
+      bestBoxCm: boxDir(exId) ? bestBox(list, boxDir(exId)) : undefined,
+      boxBetter: boxDir(exId) ? (boxDir(exId) === 'down' ? 'lower' : 'higher') : undefined,
       jump: isJump(exId) || undefined,
     });
   }

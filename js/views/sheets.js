@@ -28,6 +28,7 @@ import { lineChart } from '../charts.js';
 import { jumpContactsForDay } from '../analytics.js';
 import { buildProgramReport, downloadReport, programComplete } from '../report.js';
 import { openVideo } from '../video.js';
+import { bestBox, boxDir } from '../fields.js';
 import { makeSwappable } from '../dragsort.js';
 
 const root = () => document.getElementById('sheet-root');
@@ -58,10 +59,11 @@ export function historySheet(exId, mode) {
     const setsTxt = entry.sets.map((s) => {
       const wuTag = entry.wu > 0 && s.i < entry.wu ? 'WU ' : '';
       const reps = s.reps ?? (s.done ? entry.defReps : null);
-      if (s.weight != null && reps != null) return `${wuTag}${s.weight}kg × ${reps}`;
-      if (s.weight != null) return `${wuTag}${s.weight}kg`;
-      if (reps != null) return `${wuTag}× ${reps}`;
-      return s.done ? `${wuTag}✓` : '·';
+      const bits = [];
+      if (s.weight != null) bits.push(`${s.weight}kg`);
+      if (reps != null) bits.push(`× ${reps}`);
+      if (s.box != null) bits.push(`box ${s.box}cm`);
+      return bits.length ? wuTag + bits.join(' ') : (s.done ? `${wuTag}✓` : '·');
     }).join('  ·  ');
     const partial = entry.doneCount < entry.total;
     return h('div', { class: 'card', style: 'padding:10px 12px' },
@@ -87,19 +89,28 @@ export function historySheet(exId, mode) {
     const w = e.sets.filter((s) => s.weight != null).map((s) => +s.weight);
     return w.length ? { x: e.t, y: Math.max(...w) } : null;
   }).filter(Boolean);
+  // box height: the best per session, in this exercise's direction
+  const dir = boxDir(exId) || 'up';
+  const bestB = bestBox(list, dir);
+  const boxes = list.map((e) => {
+    const b = e.sets.filter((s) => s.box != null && s.done).map((s) => +s.box);
+    return b.length ? { x: e.t, y: dir === 'down' ? Math.min(...b) : Math.max(...b) } : null;
+  }).filter(Boolean);
 
   openSheet(
     h('div', { class: 'row', style: 'margin-bottom:10px' },
       h('div', { class: 'grow' },
         h('div', { class: 'h2' }, ex.band ? displayName(exId, mode) : ex.name),
         best != null ? h('div', { class: 'small dim' }, 'Best working weight: ', h('b', {}, `${best} kg`)) : null,
+        bestB != null ? h('div', { class: 'small dim' }, `Best box (${dir === 'down' ? 'lower' : 'higher'} is better): `, h('b', {}, `${bestB} cm`)) : null,
       ),
       hasVideo(exId)
         ? h('button', { class: 'btn sm', onclick: () => { closeSheet(); openVideo(exId); } }, '▶ Video')
         : h('a', { class: 'btn sm', href: ytUrl(exId), target: '_blank', rel: 'noopener' }, '🔎 How-to'),
     ),
     ex.note ? h('div', { class: 'banner', style: 'font-weight:500' }, ex.note) : null,
-    weights.length >= 2 ? h('div', { class: 'card chartwrap', html: lineChart(weights, { unit: 'kg' }) }) : null,
+    weights.length >= 2 ? h('div', { class: 'card chartwrap', html: lineChart(weights, { unit: 'kg' }) })
+      : boxes.length >= 2 ? h('div', { class: 'card chartwrap', html: lineChart(boxes, { unit: 'cm' }) }) : null,
     rows.length
       ? h('div', {}, h('div', { class: 'section-title' }, 'Log'), ...rows)
       : h('div', { class: 'chart-empty' }, 'No logged sessions yet — tick sets and enter weights to build history.'),
@@ -375,7 +386,7 @@ export function summarySheet({ pid, dayId, elapsed, setsDone, prs }, onClose) {
     prs.length ? h('div', { class: 'card', style: 'border-color:var(--accent-soft)' },
       h('div', { class: 'small', style: 'font-weight:800;color:var(--accent);margin-bottom:4px' }, '🎉 New bests'),
       ...prs.map((p) => h('div', { class: 'small dim' },
-        `${p.name}: `, h('b', {}, `${p.weight} kg`), p.prev != null ? ` (was ${p.prev} kg)` : ' (first log)')),
+        `${p.name}: `, h('b', {}, `${p.weight} ${p.unit || 'kg'}`), p.prev != null ? ` (was ${p.prev} ${p.unit || 'kg'})` : ' (first log)')),
     ) : null,
     h('button', { class: 'btn block', style: 'margin-top:6px', onclick: () => { closeSheet(); noteSheet(pid, dayId, onClose); } }, '✍️ Add a note'),
     h('button', { class: 'btn primary block', style: 'margin-top:8px', onclick: () => { closeSheet(); onClose?.(); } }, 'Done'),

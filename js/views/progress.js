@@ -10,6 +10,7 @@ import * as store from '../state.js';
 import { dayProgress, weekProgress, historyFor, plannedDay } from '../completion.js';
 import { todayIndex, elapsedIndex, indexToId, dateForId, fmtDate, weekdayName, currentWeek, weekdayOfPos, WEEKDAY_NAMES, prepWeeks, prepWeekIds, todayId } from '../schedule.js';
 import { fmtMs } from '../timers.js';
+import { boxDir } from '../fields.js';
 import { lineChart, barChart } from '../charts.js';
 import { jumpVolumeByWeek, spikeCheck, freestyleBlocks, FREESTYLE } from '../analytics.js';
 import { historySheet, programReportSheet } from './sheets.js';
@@ -365,29 +366,47 @@ const LIFTS = ['squat', 'leg_press', 'hip_thrust', 'nordics', 'leg_ext', 'ham_cu
   'lateral_raise', 'chest_press', 'pec_deck', 'low_row', 'seated_row', 'triceps', 'biceps'];
 let liftSel = 'leg_press';
 
+// exercises with a logged box height get their own line, in cm
+const BOXED = () => Object.keys(EX).filter((id) => boxDir(id) && historyFor(id).some((e) => e.sets.some((x) => x.box != null && x.done)));
+
 function liftCard(pid) {
   const withData = LIFTS.filter((id) => historyFor(id).some((e) => e.sets.some((x) => x.weight != null)));
-  const options = withData.length ? withData : LIFTS;
+  const boxed = BOXED().map((id) => `box:${id}`);
+  const options = withData.length || boxed.length ? [...withData, ...boxed] : LIFTS;
   if (!options.includes(liftSel)) liftSel = options[0];
 
   const sel = h('select', { class: 'sel', style: 'height:40px;font-size:14px' },
-    ...options.map((id) => h('option', { value: id, selected: id === liftSel }, EX[id].name)));
+    ...options.map((id) => h('option', { value: id, selected: id === liftSel },
+      id.startsWith('box:') ? `${EX[id.slice(4)].name} — box (cm)` : EX[id].name)));
   const chartBox = h('div', { class: 'chartwrap' });
   const draw = () => {
+    if (liftSel.startsWith('box:')) {
+      const id = liftSel.slice(4), dir = boxDir(id) || 'up';
+      const pts = historyFor(id).map((e) => {
+        const bs = e.sets.filter((x) => x.box != null && x.done).map((x) => +x.box);
+        if (!bs.length) return null;
+        const v = dir === 'down' ? Math.min(...bs) : Math.max(...bs);
+        return { x: e.t, y: v, label: `${e.index == null ? '' : labelOf(e.pid, e.dayId) + ': '}${v} cm` };
+      }).filter(Boolean);
+      chartBox.innerHTML = pts.length >= 2 ? lineChart(pts, { unit: 'cm' })
+        : `<div class="chart-empty">Log box heights across 2+ sessions to see the trend (${dir === 'down' ? 'lower' : 'higher'} is better).</div>`;
+      return;
+    }
     const pts = historyFor(liftSel).map((e) => {
       const ws = e.sets.filter((x) => x.weight != null).map((x) => +x.weight);
-      return ws.length ? { x: e.t, y: Math.max(...ws), label: `${labelOf(e.pid, e.dayId)}: ${Math.max(...ws)} kg` } : null;
+      return ws.length ? { x: e.t, y: Math.max(...ws), label: `${e.index == null ? '' : labelOf(e.pid, e.dayId) + ': '}${Math.max(...ws)} kg` } : null;
     }).filter(Boolean);
     chartBox.innerHTML = pts.length >= 2 ? lineChart(pts, { unit: 'kg' })
       : '<div class="chart-empty">Log weights on this exercise across 2+ sessions to see the trend.</div>';
   };
   sel.addEventListener('change', () => { liftSel = sel.value; draw(); });
+  const histId = () => (liftSel.startsWith('box:') ? liftSel.slice(4) : liftSel);
   draw();
 
   return h('div', { class: 'card' },
     h('div', { class: 'row', style: 'margin-bottom:8px' },
       h('div', { class: 'h2 grow', style: 'font-size:14px' }, 'Lift progression — top set (kg)'),
-      h('button', { class: 'btn sm', onclick: () => historySheet(liftSel) }, 'log')),
+      h('button', { class: 'btn sm', onclick: () => historySheet(histId()) }, 'log')),
     sel, h('div', { style: 'height:8px' }), chartBox,
   );
 }

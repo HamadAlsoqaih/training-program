@@ -7,6 +7,8 @@
 //   yq:    YouTube search query override
 //   mux:   Mux playback id → in-app HLS video
 //   jump:  counts towards jump / ground-contact volume (js/analytics.js)
+//   fields: default card fields (see fields.js), e.g. { weight: false, box: 'up' }
+//           box 'up' = higher box is better, 'down' = lower is better
 //   contacts: ground contacts per rep, when a rep is not a single contact
 //             (default 1). "each side" items are doubled by the item's own
 //             side flag, not here.
@@ -133,20 +135,20 @@ export const EX = {
   // --- Re:Zero upper body ---
   lat_pulldown:      { name: 'Lat Pulldown', note: 'Neutral grip', yq: 'neutral grip lat pulldown' },
   sa_cable_pulldown: { name: 'Single-Arm Cable Pulldown', yq: 'single arm cable pulldown' },
-  box_pushup:        { name: 'Box Push-Up', note: 'When 3×10 is clean, lower the box a step — until the floor', yq: 'box push up elevated' },
+  box_pushup:        { name: 'Box Push-Up', fields: { weight: false, box: 'down' }, note: 'When 3×10 is clean, lower the box a step — until the floor', yq: 'box push up elevated' },
   cable_lat_raise:   { name: 'Cable Lateral Raise', yq: 'cable lateral raise' },
   // --- Re:Zero lower body ---
   bike_warmup:       { name: 'Warm-Up — bike + dynamic', noload: true, note: '5 min bike, then the dynamic warm-up', yq: 'dynamic warm up lower body' },
   snap_down:         { name: 'Snap-Down to Stick', note: 'Hold the landing 2 s, knees tracking over toes', yq: 'snap down to stick drill' },
-  drop_to_stick:     { name: 'Drop-to-Stick (low box)', note: 'Hold 2 s. A sloppy landing ends the set.', yq: 'drop to stick landing low box' },
+  drop_to_stick:     { name: 'Drop-to-Stick (low box)', fields: { weight: false, box: 'up' }, note: 'Hold 2 s. A sloppy landing ends the set.', yq: 'drop to stick landing low box' },
   pogos:             { name: 'Pogos (low height)', yq: 'pogo jumps ankle stiffness' },
   accel_sprint:      { name: 'Acceleration Sprints', noload: true, note: 'Rest until you can repeat at full quality — about 1 min per 10 m', yq: 'acceleration sprint technique' },
   jump_squat:        { name: 'Jump Squat', note: 'Bodyweight, then a light bar', yq: 'jump squat technique' },
   rdl:               { name: 'RDL', note: '3 s down', yq: 'romanian deadlift technique' },
   trap_bar_dl:       { name: 'Trap-Bar Deadlift', note: 'Only after 2 quiet weeks for the back', yq: 'trap bar deadlift technique' },
-  box_squat:         { name: 'Box Squat', note: '3 s down · about 80% of your latest Monday back squat, progressed separately', yq: 'box squat technique' },
+  box_squat:         { name: 'Box Squat', fields: { box: 'down' }, note: '3 s down · about 80% of your latest Monday back squat, progressed separately', yq: 'box squat technique' },
   back_squat:        { name: 'Back Squat', note: '3 s down · under 50 kg add 5 kg a session, from 50 kg add 2.5 kg', yq: 'back squat technique' },
-  box_jump:          { name: 'Box Jump', note: 'Land on the box, step down', yq: 'box jump land step down' },
+  box_jump:          { name: 'Box Jump', fields: { weight: false, box: 'up' }, note: 'Land on the box, step down', yq: 'box jump land step down' },
   spanish_squat:     { name: 'Spanish Squat or Wall Sit', yq: 'spanish squat knee' },
   step_up:           { name: 'Step-Up', yq: 'step up technique' },
   rfess:             { name: 'RFESS', yq: 'rear foot elevated split squat' },

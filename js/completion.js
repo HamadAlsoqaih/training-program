@@ -95,9 +95,11 @@ function buildPlanned(pid, dayId, rec, easy) {
         key: base.key, si, ii, item: base.item, sch, rest,
         sets: schemeSets(sch),
         wu: sch.t === 'wuws' ? sch.wu : 0,
-        skipped: !!ov?.skipped,
+        // removed (its last set deleted) counts like skipped: settled, no work
+        skipped: !!ov?.skipped || !!ov?.removed,
+        removed: !!ov?.removed,
         mode: rec?.ex?.[base.key]?.mode || 'band',
-        edited: !!ov && Object.keys(ov).some((k) => k !== 'skipped'),
+        edited: !!ov && Object.keys(ov).some((k) => !['skipped', 'removed', 'fields'].includes(k)),
       };
     });
     return { si, sec, entries };
@@ -167,7 +169,7 @@ function buildHistoryIndex() {
         let doneCount = 0, wsDone = 0;
         for (let si = 0; si < e.sets; si++) {
           const x = raw[si];
-          if (!x || x.skipped || (!x.done && x.weight == null)) continue;
+          if (!x || x.skipped || (!x.done && x.weight == null && x.box == null)) continue;
           sets.push({ ...x, i: si });
           if (x.done) { doneCount++; if (si >= e.wu) wsDone++; }
         }
@@ -392,12 +394,16 @@ export function toggleSet(pid, dayId, entry, setIdx, extras = {}) {
   return { dayJustCompleted: justCompleted };
 }
 
-export function setLog(pid, dayId, entry, setIdx, { weight, reps }) {
+// Save what's typed in a set's boxes. Only the keys passed are written, so a
+// field that isn't on the card never wipes a value logged earlier.
+export function setLog(pid, dayId, entry, setIdx, patch) {
   store.update((s) => {
     const d = dayRec(s, pid, dayId);
     clearAssumed(d);
     const ex = exRec(d, entry.key);
-    ex.sets[setIdx] = { ...(ex.sets[setIdx] || {}), weight, reps };
+    const cur = { ...(ex.sets[setIdx] || {}) };
+    for (const [k, v] of Object.entries(patch || {})) if (v !== undefined) cur[k] = v;
+    ex.sets[setIdx] = cur;
   });
 }
 
@@ -514,11 +520,39 @@ export function deleteSet(pid, dayId, entry, setIdx) {
     const d = dayRec(s, pid, dayId);
     const ex = d.ex[entry.key];
     if (ex?.sets) ex.sets.splice(setIdx, 1);
+    // tapped ground contacts are kept per set index: shift the later ones down
+    if (d.contacts) {
+      const pre = `${entry.key}:`, moved = {};
+      for (const [k, v] of Object.entries(d.contacts)) {
+        if (!k.startsWith(pre)) continue;
+        const i = +k.slice(pre.length);
+        delete d.contacts[k];
+        if (i < setIdx) moved[k] = v; else if (i > setIdx) moved[`${pre}${i - 1}`] = v;
+      }
+      Object.assign(d.contacts, moved);
+    }
     const plan = d.plan || (d.plan = {});
     const pex = plan.ex || (plan.ex = {});
     pex[entry.key] = { ...(pex[entry.key] || {}), ...patch };
   });
 }
+
+// Deleting an exercise's last set takes the exercise off that day (asked
+// first). It counts as settled, like a skip, and can be put back.
+export function removeExercise(pid, dayId, key) {
+  store.update((s) => {
+    const d = dayRec(s, pid, dayId);
+    if (d.ex?.[key]) d.ex[key].sets = [];           // the deleted set's numbers go with it
+    if (d.contacts) for (const k of Object.keys(d.contacts)) if (k.startsWith(`${key}:`)) delete d.contacts[k];
+    const plan = d.plan || (d.plan = {});
+    const pex = plan.ex || (plan.ex = {});
+    pex[key] = { ...(pex[key] || {}), removed: true };
+  });
+}
+export const restoreExercise = (pid, dayId, key) => patchPlan(pid, dayId, key, { removed: null }, 'day');
+
+// "Only for this day" field changes; null clears them.
+export const saveDayFields = (pid, dayId, key, fields) => patchPlan(pid, dayId, key, { fields: fields || null }, 'day');
 
 export function addSet(pid, dayId, entry) {
   const patch = entry.sch.t === 'wuws'

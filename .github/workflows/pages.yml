@@ -36,6 +36,8 @@ jobs:
         run: node tests/prep.mjs
       - name: Edge case checks
         run: node tests/edge.mjs
+      - name: Card field checks
+        run: node tests/fields.mjs
       - name: Notification server checks
         run: npm ci --no-audit --no-fund && node tests/notify.mjs
 

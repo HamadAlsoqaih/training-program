@@ -21,8 +21,11 @@ import {
   toggleSet, setLog, markDay, setNote, completeSection, setExerciseField,
   toggleSkipExercise, toggleSkipSet, deleteSet, addSet, moveExercise, moveSection,
   hasCustomPlan, resetDayPlan, setExerciseOrder,
-  insertDeload, removeDeload, deloadPlanFor, isEasyDay,
+  insertDeload, removeDeload, deloadPlanFor, isEasyDay, removeExercise, restoreExercise, saveDayFields,
 } from '../completion.js';
+import {
+  fieldsFor, hasInputs, dayFields, saveFieldsEverywhere, toLatin, parseNum, BOX_STEP, bestBox, boxBetter, boxDir,
+} from '../fields.js';
 import {
   idToIndex, indexToId, clampIndex, todayId, todayIndex, dateForId, fmtDate,
   weekdayName, isSwapped, programStatus, realToday, toISO,
@@ -218,9 +221,17 @@ export function renderDay(pid, dayId, rerender) {
   }
 
   // ---- sections -----------------------------------------------------------
-  const ctx = { pid, dayId, planned, dayCtx, rerender, cardEls, container, isToday, wIns: new Map() };
-  const currentKey = sessionActive ? (nextSet(pid, dayId)?.entry.key ?? null) : null;
-  ctx.currentKey = currentKey;
+  const ctx = { pid, dayId, planned, dayCtx, rerender, cardEls, container, isToday, inputs: new Map() };
+  // which card is open: the one holding your next set (+ its superset partner);
+  // cards you opened or closed yourself keep that until the next set moves on
+  ctx.activeKey = nextSet(pid, dayId)?.entry.key ?? null;
+  ctx.activeKeys = activeKeysFor(pid, dayId, planned);
+  ctx.currentKey = ctx.activeKey;
+  const dk = `${pid}:${dayId}`;
+  if (lastActive.get(dk) !== ctx.activeKey) {
+    for (const k of [...manualOpen.keys()]) if (k.startsWith(`${dk}:`)) manualOpen.delete(k);
+    lastActive.set(dk, ctx.activeKey);
+  }
 
   planned.sections.forEach((block, pos) => {
     const { si, sec, entries } = block;
@@ -254,21 +265,23 @@ export function renderDay(pid, dayId, rerender) {
     // never gets split. Each unit remembers which program items it holds, so a
     // visual reorder maps straight back to the saved order.
     const list = h('div', { class: 'sec-list' });
+    const removed = entries.filter((e) => e.removed);
     let i = 0;
     while (i < entries.length) {
       const e = entries[i];
+      if (e.removed) { i++; continue; }          // taken off this day — listed below the cards
       if (e.item.ss && entries[i + 1]?.item.ss === e.item.ss) {
         const group = h('div', { class: 'ss-group', 'data-sortable': '' },
           h('span', { class: 'ss-label' }, 'Superset'));
         const iis = [];
         let j = i;
         while (j < entries.length && entries[j].item.ss === e.item.ss) {
-          group.append(buildCard(ctx, entries[j], j, entries.length));
+          if (!entries[j].removed) group.append(buildCard(ctx, entries[j], j, entries.length));
           iis.push(entries[j].ii);
           j++;
         }
         group.dataset.iis = iis.join(',');
-        list.append(group);
+        if (group.querySelector('.ex')) list.append(group);   // both removed: no empty box
         i = j;
       } else {
         const card = buildCard(ctx, e, i, entries.length);
@@ -287,6 +300,13 @@ export function renderDay(pid, dayId, rerender) {
       toggle.querySelector('.chev').textContent = next ? '▸' : '▾';
     };
     container.append(list);
+    if (removed.length && !fold) {
+      container.append(h('div', { class: 'removedrow' },
+        h('span', { class: 'tiny faint' }, 'Removed today:'),
+        ...removed.map((e) => h('button', {
+          class: 'chip', onclick: () => { restoreExercise(pid, dayId, e.key); toast(`${EX[e.item.ex].name} is back`); rerender({ keepScroll: true }); },
+        }, `↺ ${EX[e.item.ex].name}`))));
+    }
 
     makeSortable(list, {
       onCommit: (from, to) => {
@@ -418,24 +438,90 @@ function refreshSectionHeads(ctx) {
 
 const ARM_CHOICE = new Set(['triceps', 'biceps']);
 
+// --- shosho-style flow ---------------------------------------------------------
+// One card is open: the one holding your next set (both cards of a superset).
+// The rest are one-line rows. Tapping a row opens it; that choice lasts until
+// you move on to the next exercise, then the flow takes over again.
+const manualOpen = new Map();   // `${pid}:${dayId}:${key}` → true / false
+const lastActive = new Map();   // `${pid}:${dayId}` → the open card's key
+const editingSets = new Set();  // `${pid}:${dayId}:${key}` showing 🗑 instead of ticks
+const cardKey = (ctx, key) => `${ctx.pid}:${ctx.dayId}:${key}`;
+const isOpen = (ctx, entry) => {
+  if (organize) return true;
+  const m = manualOpen.get(cardKey(ctx, entry.key));
+  return m ?? ctx.activeKeys.has(entry.key);
+};
+// the keys that open by themselves: the next set's exercise and its superset partner
+function activeKeysFor(pid, dayId, planned) {
+  const nx = nextSet(pid, dayId);
+  const out = new Set();
+  if (!nx) return out;
+  out.add(nx.entry.key);
+  const ss = nx.entry.item.ss;
+  if (ss) {
+    const block = planned.sections.find((b) => b.entries.some((e) => e.key === nx.entry.key));
+    for (const e of block?.entries || []) if (e.item.ss === ss && !e.removed) out.add(e.key);
+  }
+  return out;
+}
+// a superset opens and closes as one
+function setOpen(ctx, entry, open) {
+  const block = ctx.planned.sections.find((b) => b.entries.some((e) => e.key === entry.key));
+  const keys = entry.item.ss
+    ? (block?.entries || []).filter((e) => e.item.ss === entry.item.ss).map((e) => e.key)
+    : [entry.key];
+  for (const k of keys) { manualOpen.set(cardKey(ctx, k), open); refreshCard(ctx, k); }
+}
+// After any change: if the next set moved to another exercise, redraw and
+// bring that card into view; otherwise just refresh this card.
+function afterChange(ctx, key) {
+  const nowActive = nextSet(ctx.pid, ctx.dayId)?.entry.key ?? null;
+  if (nowActive !== ctx.activeKey) { ctx.rerender({ keepScroll: true, scrollNext: true }); return; }
+  refreshCard(ctx, key);
+}
+
+// The kg / box value shown on a closed row: what's logged on the first set,
+// else what you did last time.
+function summaryLine(ctx, entry, f, last) {
+  const { sch } = entry;
+  const parts = [`${schemeLabel(sch)}${sch.t === 'sr' ? ' reps' : ''}`];
+  const sets = store.day(ctx.dayId, ctx.pid)?.ex?.[entry.key]?.sets || [];
+  const pick = (k) => {
+    const logged = sets.find((x) => x && x[k] != null && x[k] !== '');
+    if (logged) return logged[k];
+    const prev = last?.sets?.find((x) => x[k] != null);
+    return prev ? prev[k] : null;
+  };
+  if (f.weight) { const w = pick('weight'); parts.push(w != null ? `${w} kg` : 'kg not set'); }
+  if (f.box) { const b = pick('box'); if (b != null) parts.push(`box ${b} cm`); }
+  return parts.join(' · ');
+}
+
 function exerciseCard(ctx, entry, pos, count) {
   const { pid, dayId, dayCtx, rerender } = ctx;
   const { item, key, sch } = entry;
   const ex = EX[item.ex];
   const done = exerciseDone(pid, dayId, entry);
   const isCurrent = key === ctx.currentKey && !entry.skipped;
-  const repsBased = sch.t !== 'time' && !ex.noload;
+  const f = fieldsFor(pid, dayId, entry);
+  const inputs = hasInputs(f);
   const rec = store.day(dayId, pid);
   const exRec = rec?.ex?.[key];
   const alt = exRec?.alt || '';
   const isArmChoice = ARM_CHOICE.has(item.ex);
   const mode = entry.mode;
   const effRest = effRestSecs(item.ex, entry.rest);
-  const effSecs = sch.t === 'time' ? effHoldSecs(item.ex, sch.secs) : null;
+  // a timed exercise keeps its own seconds; a timer added to another one starts at 30 s
+  const baseSecs = sch.t === 'time' ? sch.secs : 0;
+  const effSecs = f.timer ? (store.get().settings.durOv?.[holdKey(item.ex, baseSecs)] ?? (baseSecs || f.secs || 30)) : null;
   const name = ex.band ? displayName(item.ex, mode) : ex.name;
+  const open = isOpen(ctx, entry);
+  const last = inputs ? lastSessionFor(item.ex, dayCtx, ex.band ? mode : undefined) : null;
+  const doneN = exerciseSetsDone(pid, dayId, entry);
+  const setRec = exRec?.sets || [];
 
   const card = h('div', {
-    class: `ex${done ? ' done' : ''}${isCurrent ? ' current' : ''}${item.opt ? ' optional' : ''}${entry.skipped ? ' skipped' : ''}`,
+    class: `ex${done ? ' done' : ''}${isCurrent ? ' current' : ''}${item.opt ? ' optional' : ''}${entry.skipped ? ' skipped' : ''}${open ? '' : ' closed'}`,
     'data-exkey': key,
     // Set here (not in the section loop) so a card rebuilt by refreshCard()
     // after a tick keeps its drag handle — otherwise reordering silently died
@@ -443,6 +529,23 @@ function exerciseCard(ctx, entry, pos, count) {
     'data-sortable': '',
     'data-iis': String(entry.ii),
   });
+
+  // --- closed: one line, tap to open ---------------------------------------
+  if (!open) {
+    card.append(h('button', {
+      class: 'ex-line',
+      onclick: () => setOpen(ctx, entry, true),
+    },
+      h('span', { class: `ex-idx${done ? ' ok' : ''}` }, done ? '✓' : String(pos + 1)),
+      h('span', { class: 'grow', style: 'min-width:0' },
+        h('span', { class: 'ex-name' }, name,
+          entry.skipped ? h('span', { class: 'chip bad', style: 'margin-left:7px' }, 'skipped') : null),
+        h('span', { class: 'ex-sum' }, summaryLine(ctx, entry, f, last))),
+      h('span', { class: 'sdots' }, ...Array.from({ length: entry.sets }, (_, i) =>
+        h('i', { class: setRec[i]?.done ? 'on' : setRec[i]?.skipped ? 'sk' : '' }))),
+      h('span', { class: 'chevd', 'aria-hidden': 'true' }, '▾')));
+    return card;
+  }
 
   // --- head ---
   card.append(h('div', { class: 'ex-head' },
@@ -493,6 +596,10 @@ function exerciseCard(ctx, entry, pos, count) {
           refreshCard(ctx, key);
         }, { placeholder: 'e.g. cable instead of band', hint: 'What did you actually do? Shown on this card and in history.' }),
       }, '↔') : null,
+      organize ? null : h('button', {
+        class: 'ytlink', 'aria-label': `Close ${ex.name}`,
+        onclick: () => setOpen(ctx, entry, false),
+      }, '⌃'),
     ),
   ));
 
@@ -524,45 +631,47 @@ function exerciseCard(ctx, entry, pos, count) {
 
   // --- overload: every working set clean last time → today starts heavier ---
   // The new weight is already in the boxes; you can still type over it.
-  const bump = repsBased && !entry.skipped && !dayCtx.deload && !isEasyDay(pid, dayId)
+  const bump = f.weight && !entry.skipped && !dayCtx.deload && !isEasyDay(pid, dayId)
     ? overloadHint(item.ex, dayCtx, ex.band ? mode : undefined) : null;
   if (bump) bump.next = Math.round((bump.lastWeight + BUMP_KG) * 10) / 10;
-  if (bump && !done && exerciseSetsDone(pid, dayId, entry) === 0) {
+  if (bump && !done && doneN === 0) {
     card.append(h('div', { class: 'hint' },
       `Ready to add weight: every set clean at ${bump.lastWeight} kg last time → today starts at ${bump.next} kg`));
   }
 
   // --- sets ---
-  const last = repsBased ? lastSessionFor(item.ex, dayCtx, ex.band ? mode : undefined) : null;
-  const setsWrap = h('div', { class: 'sets' });
+  const editing = editingSets.has(cardKey(ctx, key));
+  const setsWrap = h('div', { class: `sets${inputs ? '' : ' ticks'}` });
   for (let i = 0; i < entry.sets; i++) {
-    setsWrap.append(setRow(ctx, entry, i, last, repsBased, bump));
+    setsWrap.append(setRow(ctx, entry, i, last, f, bump, editing));
   }
   card.append(setsWrap);
 
-  // --- timed exercise controls ---
-  if (sch.t === 'time') {
+  // --- timer (timed exercises, or a timer you added) ---
+  if (f.timer) {
     card.append(h('div', { class: 'ex-actions' },
       h('button', {
         class: 'timerbtn',
         onclick: () => {
           unlockAudio();
           startCountdown({
-            label: ex.name, secs: effHoldSecs(item.ex, sch.secs), kind: 'hold',
-            onDone: () => {
+            label: ex.name, secs: effSecs, kind: 'hold',
+            // a timed exercise logs its next set when the hold ends; a timer you
+            // added to a rep exercise just counts down
+            onDone: sch.t !== 'time' ? null : () => {
               const cur = store.day(dayId, pid)?.ex?.[key]?.sets || [];
               for (let i = 0; i < entry.sets; i++) {
-                if (!cur[i]?.done) {
+                if (!cur[i]?.done && !cur[i]?.skipped) {
                   const { dayJustCompleted } = toggleSet(pid, dayId, entry, i);
                   const r = effRestSecs(item.ex, entry.rest);
                   if (r > 0 && store.get().settings.autoRest && !dayJustCompleted) {
-                    startCountdown({ label: `Rest — ${ex.name}`, secs: r, kind: 'rest' });
+                    startCountdown({ label: restLabel(pid, dayId), secs: r, kind: 'rest' });
                   }
                   if (dayJustCompleted) { onDayCompleted(pid, dayId, rerender); return; }
                   break;
                 }
               }
-              refreshCard(ctx, key);
+              afterChange(ctx, key);
             },
           });
         },
@@ -570,16 +679,32 @@ function exerciseCard(ctx, entry, pos, count) {
       h('button', {
         class: 'timerbtn', style: 'flex:0 0 auto', 'aria-label': 'Edit timer duration',
         onclick: () => durationSheet(`Timer — ${ex.name}`, effSecs, (secs) => {
-          store.update((st) => { st.settings.durOv[holdKey(item.ex, sch.secs)] = secs; });
+          store.update((st) => { st.settings.durOv[holdKey(item.ex, baseSecs)] = secs; });
           toast(`Timer saved: ${fmtSecs(secs)} (remembered)`);
           refreshCard(ctx, key);
-        }, { hint: `Program says ${fmtSecs(sch.secs)}. Remembered for future sessions; when the program itself changes the duration, the new value takes over.` }),
+        }, { hint: sch.t === 'time'
+          ? `Program says ${fmtSecs(sch.secs)}. Remembered for future sessions; when the program itself changes the duration, the new value takes over.`
+          : 'Remembered for this exercise.' }),
       }, '✎'),
     ));
   }
 
   // --- ground-contact counter ---
   if (item.counter) card.append(contactCounter(ctx, entry));
+
+  // --- add / delete sets, and the card's fields ---
+  card.append(h('div', { class: 'cardfoot' },
+    h('button', { class: 'btn sm', onclick: () => { addSet(pid, dayId, entry); afterChange(ctx, key); } }, '+ set'),
+    entry.sets > 0 ? h('button', {
+      class: `btn sm${editing ? ' primary' : ''}`, 'aria-pressed': editing ? 'true' : 'false',
+      onclick: () => {
+        const k = cardKey(ctx, key);
+        if (editing) editingSets.delete(k); else editingSets.add(k);
+        refreshCard(ctx, key);
+      },
+    }, editing ? '✓ Done' : 'Edit sets') : null,
+    h('button', { class: 'btn sm', onclick: () => fieldsSheet(ctx, entry) }, '⚙ Fields'),
+  ));
 
   // --- organize controls ---
   if (organize) {
@@ -589,18 +714,131 @@ function exerciseCard(ctx, entry, pos, count) {
       h('button', { class: 'iconbtn', disabled: pos === count - 1, 'aria-label': 'Move down',
         onclick: () => { moveExercise(pid, dayId, entry.si, entry.ii, +1); rerender({ keepScroll: true }); } }, '↓'),
       h('button', { class: 'btn sm', onclick: () => editExerciseSheet(pid, dayId, entry, rerender) }, '✎ Edit'),
-      h('button', { class: 'btn sm', onclick: () => { addSet(pid, dayId, entry); refreshCard(ctx, key); } }, '+ set'),
     ));
   }
 
   return card;
 }
 
-// One set row: [tick] [−][kg][+] [reps]  + last-session line
-function setRow(ctx, entry, i, last, repsBased, bump) {
+// Delete a set, asking first. The last set takes the exercise off the day.
+function askDeleteSet(ctx, entry, i) {
+  const { pid, dayId } = ctx;
+  const ex = EX[entry.item.ex];
+  const st = store.day(dayId, pid)?.ex?.[entry.key]?.sets?.[i];
+  const lastOne = entry.sets <= 1;
+  const logged = [st?.weight != null ? `${st.weight} kg` : null, st?.reps != null ? `× ${st.reps}` : null,
+    st?.box != null ? `box ${st.box} cm` : null].filter(Boolean).join(' ');
+  openSheet(
+    h('div', { class: 'h2', style: 'margin-bottom:6px' }, lastOne ? `Remove ${ex.name}?` : `Delete set ${i + 1}?`),
+    h('div', { class: 'small dim', style: 'margin-bottom:14px' }, lastOne
+      ? 'That was its last set, so the exercise comes off this day. You can put it back from the bottom of the section.'
+      : `${ex.name}${logged ? ` · ${logged}` : ''}${st?.done ? ' · already logged' : ''}`),
+    h('div', { class: 'row', style: 'gap:8px' },
+      h('button', { class: 'btn grow', onclick: closeSheet }, 'Keep it'),
+      h('button', {
+        class: 'btn danger grow',
+        onclick: () => {
+          closeSheet();
+          if (lastOne) {
+            editingSets.delete(cardKey(ctx, entry.key));
+            removeExercise(pid, dayId, entry.key);
+            toast(`${ex.name} removed from this day`);
+            ctx.rerender({ keepScroll: true });
+            return;
+          }
+          deleteSet(pid, dayId, entry, i);
+          afterChange(ctx, entry.key);
+        },
+      }, lastOne ? 'Remove' : 'Delete')),
+  );
+}
+
+// The card's fields: weight, reps, box (higher or lower is better) and a timer.
+// Saved for this exercise everywhere, or with the tick, for this day only.
+function fieldsSheet(ctx, entry) {
+  const { pid, dayId } = ctx;
+  const ex = EX[entry.item.ex];
+  const cur = fieldsFor(pid, dayId, entry);
+  const hasDay = Object.keys(dayFields(pid, dayId, entry.key)).length > 0;
+  const tgl = (label, sub, on) => {
+    const input = h('input', { type: 'checkbox', checked: on || null });
+    const row = h('div', { class: 'setrow2' },
+      h('div', { class: 'grow' }, h('div', { class: 'small', style: 'font-weight:700' }, label),
+        sub ? h('div', { class: 'tiny faint' }, sub) : null),
+      h('label', { class: 'switch' }, input, h('span', { class: 'knob' })));
+    return { row, input };
+  };
+  const w = tgl('Weight (kg)', null, cur.weight);
+  const r = tgl('Reps', null, cur.reps);
+  const b = tgl('Box height (cm)', 'For box jumps, box push-ups and the like', !!cur.box);
+  const t = tgl('Timer', 'A countdown on the card — for holds', cur.timer);
+  let dir = cur.box || 'up';
+  const dirSeg = h('div', { class: 'seg', style: 'margin:0 0 6px' });
+  const drawDir = () => dirSeg.replaceChildren(
+    ...[['up', 'Higher is better'], ['down', 'Lower is better']].map(([v, l]) => h('button', {
+      class: `seg-btn${dir === v ? ' on' : ''}`, onclick: () => { dir = v; drawDir(); },
+    }, l)));
+  drawDir();
+  const showDir = () => { dirSeg.style.display = b.input.checked ? '' : 'none'; };
+  b.input.addEventListener('change', showDir); showDir();
+  const only = h('input', { type: 'checkbox', checked: hasDay || null });
+  const build = () => ({ weight: w.input.checked, reps: r.input.checked, timer: t.input.checked,
+    box: b.input.checked ? dir : false });
+  openSheet(
+    h('div', { class: 'h2', style: 'margin-bottom:2px' }, `Fields — ${ex.name}`),
+    h('div', { class: 'tiny faint', style: 'margin-bottom:8px' }, 'Which boxes this card shows. Your logged history is kept either way.'),
+    w.row, r.row, b.row, dirSeg, t.row,
+    h('label', { class: 'row', style: 'gap:10px;margin:12px 0 4px' },
+      h('span', { class: 'switch' }, only, h('span', { class: 'knob' })),
+      h('span', { class: 'small' }, 'Only for this day',
+        h('span', { class: 'tiny faint', style: 'display:block' }, 'Off: changes this exercise everywhere'))),
+    h('div', { class: 'row', style: 'gap:8px;margin-top:12px' },
+      h('button', {
+        class: 'btn grow',
+        onclick: () => {
+          saveFieldsEverywhere(entry.item.ex, null);
+          saveDayFields(pid, dayId, entry.key, null);
+          closeSheet(); toast('Back to the program’s fields'); ctx.rerender({ keepScroll: true });
+        },
+      }, 'Reset'),
+      h('button', {
+        class: 'btn primary grow',
+        onclick: () => {
+          if (only.checked) saveDayFields(pid, dayId, entry.key, build());
+          else { saveFieldsEverywhere(entry.item.ex, build()); saveDayFields(pid, dayId, entry.key, null); }
+          closeSheet(); toast(only.checked ? 'Saved for this day' : `Saved for ${ex.name} everywhere`);
+          ctx.rerender({ keepScroll: true });
+        },
+      }, 'Save')),
+  );
+}
+
+// A number box that takes 0-9, Arabic/Persian digits and a comma decimal;
+// anything else is refused (the box keeps its last good value).
+function numBox({ value, placeholder, decimal, onSave }) {
+  const el = h('input', {
+    type: 'text', inputmode: decimal ? 'decimal' : 'numeric', autocomplete: 'off', enterkeyhint: 'next',
+    placeholder, value: value ?? '', class: 'numbox',
+  });
+  let good = el.value;
+  el.addEventListener('input', () => {
+    const lat = toLatin(el.value);
+    const ok = decimal ? /^\d*\.?\d*$/.test(lat) : /^\d*$/.test(lat);
+    if (!ok) { el.value = good; el.classList.remove('nudge'); void el.offsetWidth; el.classList.add('nudge'); return; }
+    if (lat !== el.value) el.value = lat;
+    good = el.value;
+  });
+  el.addEventListener('change', () => { const v = parseNum(el.value); el.value = v == null || Number.isNaN(v) ? '' : String(v); good = el.value; onSave(); });
+  return el;
+}
+const valOf = (el) => { if (!el) return undefined; const v = parseNum(el.value); return v == null || Number.isNaN(v) ? null : v; };
+
+// One set row: [tick] then the card's fields (kg, reps, box) + last-session line
+function setRow(ctx, entry, i, last, f, bump, editing) {
   const { pid, dayId, rerender } = ctx;
   const { key, sch, item } = entry;
   const ex = EX[item.ex];
+  const inputs = hasInputs(f);
   const isWU = sch.t === 'wuws' && i < entry.wu;
   const st = store.day(dayId, pid)?.ex?.[key]?.sets?.[i];
   const ticked = !!st?.done;
@@ -610,12 +848,10 @@ function setRow(ctx, entry, i, last, repsBased, bump) {
     : `${i + 1}`;
 
   const prevSet = last?.sets?.find((s2) => s2.i === i) ?? last?.sets?.[last?.sets?.length - 1];
-  let wIn = null, rIn = null;
+  let wIn = null, rIn = null, bIn = null;
 
-  const readInputs = () => ({
-    weight: wIn && wIn.value !== '' ? +wIn.value : null,
-    reps: rIn && rIn.value !== '' ? +rIn.value : null,
-  });
+  // only the fields on the card are written, so a hidden field keeps its old value
+  const readInputs = () => ({ weight: valOf(wIn), reps: valOf(rIn), box: valOf(bIn) });
   const saveLog = () => setLog(pid, dayId, entry, i, readInputs());
 
   // Hold a set to skip just that set — the whole-exercise skip stays on the
@@ -624,10 +860,10 @@ function setRow(ctx, entry, i, last, repsBased, bump) {
   const skipThisSet = () => {
     const now = toggleSkipSet(pid, dayId, entry, i);
     toast(now ? `Set ${i + 1} skipped` : `Set ${i + 1} back in`);
-    refreshCard(ctx, key);
+    afterChange(ctx, key);
   };
   const doTick = () => {
-    const { dayJustCompleted } = toggleSet(pid, dayId, entry, i, repsBased ? readInputs() : {});
+    const { dayJustCompleted } = toggleSet(pid, dayId, entry, i, inputs ? readInputs() : {});
     const nowTicked = !ticked;
     // The first set you tick today starts the workout clock if you forgot to.
     const autoStarted = nowTicked && ctx.isToday && !store.get().session;
@@ -637,103 +873,115 @@ function setRow(ctx, entry, i, last, repsBased, bump) {
       startCountdown({ label: restLabel(pid, dayId), secs: effRest, kind: 'rest' });
     }
     if (dayJustCompleted) { onDayCompleted(pid, dayId, rerender); return; }
-    if (autoStarted) { toast('Workout timer started'); rerender({ keepScroll: true }); return; }
-    refreshCard(ctx, key);
+    if (autoStarted) {      // the timer bar appears, so the whole day redraws
+      toast('Workout timer started');
+      rerender({ keepScroll: true, scrollNext: nextSet(pid, dayId)?.entry.key !== ctx.activeKey });
+      return;
+    }
+    afterChange(ctx, key);
   };
-  const tick = h('button', {
-    class: `set${isWU ? ' wu' : ''}${ticked ? ' on' : ''}${setSkipped ? ' skipped' : ''}`,
-    'aria-label': `${ex.name} set ${i + 1}${setSkipped ? ' (skipped)' : ''} — hold to skip`,
-    onpointerdown: () => {
-      held = false;
-      holdTimer = setTimeout(() => { held = true; skipThisSet(); }, 450);
-    },
-    onpointerup: () => clearTimeout(holdTimer),
-    onpointercancel: () => clearTimeout(holdTimer),
-    onpointerleave: () => clearTimeout(holdTimer),
-    onclick: () => {
-      clearTimeout(holdTimer);
-      if (held) { held = false; return; }      // the hold already skipped it
-      unlockAudio();
-      // An empty weight box on an exercise you have loaded before is probably a
-      // slip, so ask. Never asked for exercises you've only done without weight.
-      if (!ticked && wIn && wIn.value === '' && usedWeightBefore(item.ex, ex.band ? entry.mode : undefined)) {
-        confirmNoWeight(ex.name, doTick, () => wIn.focus());
-        return;
-      }
-      doTick();
-    },
-  }, h('span', { class: 'lbl' }, setSkipped ? '⤼' : ticked ? '✓' : label));
+  const tick = editing
+    ? h('button', { class: 'set trash', 'aria-label': `Delete set ${i + 1}`, onclick: () => askDeleteSet(ctx, entry, i) }, '🗑')
+    : h('button', {
+      class: `set${isWU ? ' wu' : ''}${ticked ? ' on' : ''}${setSkipped ? ' skipped' : ''}`,
+      'aria-label': `${ex.name} set ${i + 1}${setSkipped ? ' (skipped)' : ''} — hold to skip`,
+      onpointerdown: () => {
+        held = false;
+        holdTimer = setTimeout(() => { held = true; skipThisSet(); }, 450);
+      },
+      onpointerup: () => clearTimeout(holdTimer),
+      onpointercancel: () => clearTimeout(holdTimer),
+      onpointerleave: () => clearTimeout(holdTimer),
+      onclick: () => {
+        clearTimeout(holdTimer);
+        if (held) { held = false; return; }      // the hold already skipped it
+        unlockAudio();
+        // An empty weight box on an exercise you have loaded before is probably a
+        // slip, so ask. Never asked for exercises you've only done without weight.
+        if (!ticked && wIn && wIn.value === '' && usedWeightBefore(item.ex, ex.band ? entry.mode : undefined)) {
+          confirmNoWeight(ex.name, doTick, () => wIn.focus());
+          return;
+        }
+        doTick();
+      },
+    }, h('span', { class: 'lbl' }, setSkipped ? '⤼' : ticked ? '✓' : label));
 
-  if (!repsBased) {
-    return organize
+  if (!inputs) {
+    return organize && !editing
       ? h('div', { class: 'setrow' }, tick,
-          h('button', { class: `iconbtn${setSkipped ? ' on' : ''}`, 'aria-label': 'Skip this set', onclick: skipThisSet }, '⤼'),
-          h('button', {
-            class: 'iconbtn danger', 'aria-label': 'Delete set',
-            onclick: () => { deleteSet(pid, dayId, entry, i); refreshCard(ctx, key); },
-          }, '🗑'))
+          h('button', { class: `iconbtn${setSkipped ? ' on' : ''}`, 'aria-label': 'Skip this set', onclick: skipThisSet }, '⤼'))
       : tick;
   }
 
-  // On a deload day the prescription is "about 60% of last time" — prefill that
-  // rather than last week's working weight, so going light is the default.
-  const suggested = ctx.dayCtx.deload ? deloadWeight(prevSet?.weight ?? null)
-    : (bump && !isWU ? bump.next : (prevSet?.weight ?? null));
-  // A weight you type carries down to the sets below it that aren't ticked yet
+  // A value you type carries down to the sets below it that aren't ticked yet
   // (warm-ups and working sets each keep to their own group).
-  const carryDown = () => {
-    const w = readInputs().weight;
+  const boxesOf = (field) => {
+    const all = ctx.inputs.get(key) || (ctx.inputs.set(key, { weight: [], box: [] }), ctx.inputs.get(key));
+    return all[field];
+  };
+  const carryDown = (field, el) => {
+    const v = valOf(el);
     const sets = store.day(dayId, pid)?.ex?.[key]?.sets || [];
-    const boxes = ctx.wIns.get(key) || [];
+    const boxes = boxesOf(field);
     for (let j = i + 1; j < entry.sets; j++) {
       if ((sch.t === 'wuws' && j < entry.wu) !== isWU || sets[j]?.done || sets[j]?.skipped) continue;
-      setLog(pid, dayId, entry, j, { weight: w, reps: sets[j]?.reps ?? null });
-      if (boxes[j] && boxes[j] !== document.activeElement) boxes[j].value = w ?? '';
+      setLog(pid, dayId, entry, j, { [field]: v });
+      if (boxes[j] && boxes[j] !== document.activeElement) boxes[j].value = v ?? '';
     }
   };
-  wIn = h('input', {
-    type: 'number', inputmode: 'decimal', step: 'any', placeholder: ctx.dayCtx.deload ? 'kg (light)' : 'kg',
-    value: st?.weight ?? suggested ?? '',
-    onchange: () => { saveLog(); carryDown(); },
-  });
-  if (!ctx.wIns.has(key)) ctx.wIns.set(key, []);
-  ctx.wIns.get(key)[i] = wIn;
-  rIn = h('input', {
-    type: 'number', inputmode: 'numeric', placeholder: sch.reps != null ? String(sch.reps) : 'reps',
-    value: st?.reps ?? '',
-    onchange: saveLog,
-  });
-  const step = (d) => h('button', {
-    class: 'step', 'aria-label': d > 0 ? 'add 2.5 kg' : 'remove 2.5 kg',
+  const many = [f.weight, f.reps, f.box].filter(Boolean).length > 2;   // no room for − / + on all three
+  const stepper = (el, d, field) => h('button', {
+    class: 'step', 'aria-label': d > 0 ? `more ${field}` : `less ${field}`,
     onclick: () => {
-      const cur = wIn.value !== '' ? +wIn.value : 0;
-      wIn.value = String(Math.max(0, Math.round((cur + d) * 10) / 10));
-      saveLog(); carryDown();
+      const cur = valOf(el) ?? 0;
+      el.value = String(Math.max(0, Math.round((cur + d) * 10) / 10));
+      saveLog(); carryDown(field, el);
     },
   }, d > 0 ? '+' : '−');
 
+  const parts = [];
+  if (f.weight) {
+    // On a deload day the prescription is "about 60% of last time" — prefill that
+    // rather than last week's working weight, so going light is the default.
+    const suggested = ctx.dayCtx.deload ? deloadWeight(prevSet?.weight ?? null)
+      : (bump && !isWU ? bump.next : (prevSet?.weight ?? null));
+    wIn = numBox({ value: st?.weight ?? suggested, placeholder: ctx.dayCtx.deload ? 'kg (light)' : 'kg', decimal: true,
+      onSave: () => { saveLog(); carryDown('weight', wIn); } });
+    boxesOf('weight')[i] = wIn;
+    if (many) parts.push(wIn); else parts.push(stepper(wIn, -2.5, 'weight'), wIn, stepper(wIn, 2.5, 'weight'));
+  }
+  if (f.reps) {
+    rIn = numBox({ value: st?.reps, placeholder: sch.reps != null ? String(sch.reps) : 'reps', decimal: false, onSave: saveLog });
+    parts.push(rIn, h('span', { class: 'unit' }, 'REPS'));
+  }
+  if (f.box) {
+    bIn = numBox({ value: st?.box ?? prevSet?.box, placeholder: 'cm', decimal: true,
+      onSave: () => { saveLog(); carryDown('box', bIn); } });
+    boxesOf('box')[i] = bIn;
+    if (!f.weight && !many) parts.push(stepper(bIn, -BOX_STEP, 'box'), bIn, stepper(bIn, BOX_STEP, 'box'));
+    else parts.push(bIn);
+    parts.push(h('span', { class: 'unit' }, f.box === 'down' ? 'CM ↓' : 'CM ↑'));
+  }
+
   const row = h('div', { class: 'setrow' }, tick,
-    h('div', { class: 'loginputs' }, step(-2.5), wIn, step(2.5), rIn, h('span', { class: 'unit' }, 'REPS')),
-    organize ? h('button', {
+    h('div', { class: 'loginputs' }, ...parts),
+    organize && !editing ? h('button', {
       class: `iconbtn${setSkipped ? ' on' : ''}`, 'aria-label': 'Skip this set',
       onclick: skipThisSet,
     }, '⤼') : null,
-    organize ? h('button', {
-      class: 'iconbtn danger', 'aria-label': 'Delete set',
-      onclick: () => { deleteSet(pid, dayId, entry, i); refreshCard(ctx, key); },
-    }, '🗑') : null,
   );
 
-  // last-session line: what you actually lifted for this set last time —
+  // last-session line: what you actually did on this set last time —
   // from ANY program, labelled when it came from a different one.
-  if (prevSet && (prevSet.weight != null || prevSet.reps != null)) {
+  if (prevSet && (prevSet.weight != null || prevSet.reps != null || prevSet.box != null)) {
     const reps = prevSet.reps ?? (prevSet.done ? last.defReps : null);
-    const parts = [];
-    if (prevSet.weight != null) parts.push(`${prevSet.weight} kg`);
-    if (reps != null) parts.push(`× ${reps}`);
+    const bits = [];
+    if (prevSet.weight != null) bits.push(`${prevSet.weight} kg`);
+    if (reps != null) bits.push(`× ${reps}`);
+    if (prevSet.box != null) bits.push(`box ${prevSet.box} cm`);
     const from = last.pid !== pid ? ` · ${shortProgramName(last.pid)}` : '';
     return h('div', { class: 'setwrap' }, row,
-      h('div', { class: 'lastline' }, `↺ last: ${parts.join(' ')}${from}`));
+      h('div', { class: 'lastline' }, `↺ last: ${bits.join(' ')}${from}`));
   }
   return row;
 }
@@ -935,6 +1183,14 @@ function onDayCompleted(pid, dayId, rerender) {
     setsDone += (exRec.sets || []).filter((x) => x?.done).length;
     if (seen.has(e.item.ex)) continue;
     seen.add(e.item.ex);
+    // box height: higher or lower is better, per exercise
+    const dir = boxDir(e.item.ex, pid, dayId, e.key);
+    const boxesToday = (exRec.sets || []).filter((x) => x?.done && x.box != null).map((x) => +x.box);
+    if (dir && boxesToday.length && !getDay(pid, dayId)?.light) {   // a deload is never a record
+      const todayB = dir === 'down' ? Math.min(...boxesToday) : Math.max(...boxesToday);
+      const prevB = bestBox(historyFor(e.item.ex).filter((hh) => !(!hh.run && hh.pid === pid && hh.dayId === dayId)), dir);
+      if (prevB === null || boxBetter(todayB, prevB, dir)) prs.push({ name: `${EX[e.item.ex].name} (box)`, weight: todayB, prev: prevB, unit: 'cm' });
+    }
     const todayW = Math.max(...(exRec.sets || []).map((x) => (x?.weight != null ? +x.weight : -Infinity)));
     if (!isFinite(todayW)) continue;
     const prevBest = bestWeight(historyFor(e.item.ex)

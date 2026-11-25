@@ -107,12 +107,17 @@ function render(opts = {}) {
   view().replaceChildren(el);
   document.querySelectorAll('#tabbar a').forEach((a) => a.classList.toggle('active', a.dataset.tab === tab));
 
+  if (opts.keepScroll || opts.scrollNext) window.scrollTo(0, prevScroll);
+  else window.scrollTo(0, 0);
+  // the next exercise just opened: glide to it (from where you were, not the top)
   if (opts.scrollNext) {
     const cur = view().querySelector('.ex.current');
-    if (cur) { cur.scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
+    if (cur) {
+      const r = cur.getBoundingClientRect();
+      const top = window.scrollY + r.top - Math.max(90, (window.innerHeight - Math.min(r.height, window.innerHeight * 0.7)) / 2);
+      window.scrollTo({ top: Math.max(0, top), behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+    }
   }
-  if (opts.keepScroll) window.scrollTo(0, prevScroll);
-  else window.scrollTo(0, 0);
 }
 
 window.addEventListener('hashchange', () => render());
@@ -166,6 +171,64 @@ onCountdown((cd) => {
     restUi.rtime.textContent = fmtMs(cd.remainMs + 999);
   }
 });
+
+// --- number boxes: tap selects what's there, so typing replaces it -----------
+// (iPhone drops a selection made on focus when the tap ends, so select again
+// right after.) Enter moves from one box to the next in the same set row.
+const isNumBox = (t) => t?.classList?.contains('numbox');
+const selectAll = (t) => { try { t.setSelectionRange(0, t.value.length); } catch { try { t.select(); } catch { /* ignore */ } } };
+document.addEventListener('focusin', (e) => {
+  if (!isNumBox(e.target)) return;
+  e.target.dataset.fresh = '1';
+  selectAll(e.target);
+  setTimeout(() => { if (e.target.dataset.fresh) selectAll(e.target); }, 0);
+});
+for (const type of ['mouseup', 'touchend']) {
+  document.addEventListener(type, (e) => {
+    const t = e.target;
+    if (!isNumBox(t) || !t.dataset.fresh) return;
+    if (type === 'mouseup') e.preventDefault();
+    setTimeout(() => { if (t.dataset.fresh) selectAll(t); }, 0);
+  }, true);
+}
+document.addEventListener('input', (e) => { if (isNumBox(e.target)) delete e.target.dataset.fresh; });
+document.addEventListener('focusout', (e) => { if (isNumBox(e.target)) delete e.target.dataset.fresh; });
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Enter' || !isNumBox(e.target)) return;
+  e.preventDefault();
+  const row = e.target.closest('.loginputs');
+  const boxes = row ? [...row.querySelectorAll('.numbox')] : [];
+  const next = boxes[boxes.indexOf(e.target) + 1];
+  if (next) next.focus(); else e.target.blur();
+});
+
+// --- keyboard vs the tab bar (iPhone) ------------------------------------------
+// iPhone Home Screen apps can leave bottom-pinned bars floating where the
+// keyboard's top edge was after it closes. While typing, the tab bar hides
+// (the keyboard covers it anyway); when the keyboard goes, a 1-px scroll
+// nudge makes iPhone put pinned bars back on the screen's bottom edge.
+const typing = (t) => t && (t.tagName === 'TEXTAREA' || t.tagName === 'SELECT'
+  || (t.tagName === 'INPUT' && !['checkbox', 'radio', 'button', 'range', 'color', 'file'].includes(t.type)));
+const settleBars = () => {
+  const y = window.scrollY;
+  window.scrollTo(0, y + 1); window.scrollTo(0, y);
+};
+document.addEventListener('focusin', (e) => { if (typing(e.target)) document.body.classList.add('kb-open'); });
+document.addEventListener('focusout', () => {
+  setTimeout(() => {
+    if (typing(document.activeElement)) return;       // moved to the next box
+    document.body.classList.remove('kb-open');
+    settleBars();
+  }, 120);
+});
+if (window.visualViewport) {
+  let wasShort = false;
+  window.visualViewport.addEventListener('resize', () => {
+    const short = window.visualViewport.height < window.innerHeight * 0.8;
+    if (wasShort && !short) setTimeout(settleBars, 60);   // keyboard just closed
+    wasShort = short;
+  });
+}
 
 // re-check "today" when the app comes back to the foreground
 document.addEventListener('visibilitychange', () => {

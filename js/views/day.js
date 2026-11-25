@@ -16,7 +16,7 @@ import {
 } from '../program.js';
 import * as store from '../state.js';
 import {
-  plannedDay, requiredEntries, exerciseDone, exerciseSetsDone, dayProgress,
+  plannedDay, requiredEntries, exerciseDone, exerciseSetsDone, exerciseSetsSkipped, dayProgress,
   firstOpenIndex, lastSessionFor, overloadHint, historyFor, bestWeight, dayTime,
   toggleSet, setLog, markDay, setNote, completeSection, setExerciseField,
   toggleSkipExercise, toggleSkipSet, deleteSet, addSet, moveExercise, moveSection,
@@ -464,6 +464,25 @@ function activeKeysFor(pid, dayId, planned) {
   }
   return out;
 }
+// Rest after a set. In a superset you rest once per ROUND (one set of each):
+// if a partner still owes a set to this round, go straight to it, no rest;
+// otherwise the round is over — also when the partner has run out of sets
+// (3 sets against 2: the third is a round on its own) — and you rest for the
+// superset's rest, the longest any of its exercises asks for.
+function restAfterSet(pid, dayId, entry) {
+  const own = effRestSecs(entry.item.ex, entry.rest);
+  const ss = entry.item.ss;
+  if (!ss) return own;
+  const planned = plannedDay(pid, dayId);
+  const block = planned?.sections.find((b) => b.entries.some((e) => e.key === entry.key));
+  const group = (block?.entries || []).filter((e) => e.item.ss === ss && !e.removed && !e.skipped);
+  const settled = (e) => exerciseSetsDone(pid, dayId, e) + exerciseSetsSkipped(pid, dayId, e);
+  const mine = settled(entry);
+  const partnerOwes = group.some((e) => e.key !== entry.key && settled(e) < e.sets && settled(e) < mine);
+  if (partnerOwes) return 0;
+  return Math.max(own, ...group.map((e) => effRestSecs(e.item.ex, e.rest)));
+}
+
 // a superset opens and closes as one
 function setOpen(ctx, entry, open) {
   const block = ctx.planned.sections.find((b) => b.entries.some((e) => e.key === entry.key));
@@ -663,7 +682,7 @@ function exerciseCard(ctx, entry, pos, count) {
               for (let i = 0; i < entry.sets; i++) {
                 if (!cur[i]?.done && !cur[i]?.skipped) {
                   const { dayJustCompleted } = toggleSet(pid, dayId, entry, i);
-                  const r = effRestSecs(item.ex, entry.rest);
+                  const r = restAfterSet(pid, dayId, entry);
                   if (r > 0 && store.get().settings.autoRest && !dayJustCompleted) {
                     startCountdown({ label: restLabel(pid, dayId), secs: r, kind: 'rest' });
                   }
@@ -868,7 +887,7 @@ function setRow(ctx, entry, i, last, f, bump, editing) {
     // The first set you tick today starts the workout clock if you forgot to.
     const autoStarted = nowTicked && ctx.isToday && !store.get().session;
     if (autoStarted) startSession(pid, dayId);
-    const effRest = effRestSecs(item.ex, entry.rest);
+    const effRest = restAfterSet(pid, dayId, entry);
     if (nowTicked && effRest > 0 && store.get().settings.autoRest && !dayJustCompleted) {
       startCountdown({ label: restLabel(pid, dayId), secs: effRest, kind: 'rest' });
     }

@@ -78,5 +78,38 @@ comp.restoreExercise('rz', day, plain.key);
 eq('restored', comp.plannedEntry('rz', day, plain.key).removed, false);
 eq('removed/fields don\'t count as "edited"', (comp.saveDayFields('rz', day, bp.key, { box: 'up' }), comp.plannedEntry('rz', day, bp.key).edited), false);
 
+// --- timed protocol items (breathing, stretches, VO2) keep their timer
+eq('timed noload keeps timer', F.defaultFields({ ex: 'breathing_711' }, { t: 'time', sets: 1, secs: 60 }).timer, true);
+eq('rep noload has no boxes', F.hasInputs(F.defaultFields({ ex: 'dyn_warmup' }, { t: 'sr', sets: 1, reps: 1 })), false);
+
+// --- deleting the last open set / removing the last unfinished exercise finishes the day
+{
+  const d2 = 'w2d1';
+  const pl = comp.plannedDay('rz', d2);
+  const req = comp.requiredEntries(pl);
+  store.update((s) => { s.programs.rz.days[d2] = { status: null, ex: {} }; });
+  // tick everything except the last set of the last required exercise
+  const lastE = req[req.length - 1];
+  for (const e of req) for (let k = 0; k < e.sets; k++) {
+    if (e === lastE && k === e.sets - 1) continue;
+    comp.toggleSet('rz', d2, e, k);
+  }
+  eq('not done yet', store.day(d2, 'rz').status, null);
+  const cur = comp.plannedEntry('rz', d2, lastE.key);
+  if (cur.sets > 1) eq('deleting the last open set finishes the day', comp.deleteSet('rz', d2, cur, cur.sets - 1), true);
+  else eq('removing the last open exercise finishes the day', comp.removeExercise('rz', d2, cur.key), true);
+  eq('day done', store.day(d2, 'rz').status, 'done');
+}
+// --- restore brings the program's set count back
+{
+  const d3 = 'w2d4';
+  const e = comp.requiredEntries(comp.plannedDay('rz', d3)).find((x) => x.sch.t === 'sr' && x.sets >= 2);
+  const full = e.sets;
+  comp.deleteSet('rz', d3, e, 0);
+  comp.removeExercise('rz', d3, e.key);
+  comp.restoreExercise('rz', d3, e.key);
+  eq('restore: program set count back', comp.plannedEntry('rz', d3, e.key).sets, full);
+}
+
 if (fails) { console.error(`\n${fails} check(s) failed`); process.exit(1); }
 console.log('✓ All field checks passed');

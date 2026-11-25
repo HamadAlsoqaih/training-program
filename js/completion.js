@@ -511,7 +511,9 @@ export const toggleSkipExercise = (pid, dayId, key, skipped, scope = 'day') =>
   patchPlan(pid, dayId, key, { skipped: skipped || null }, scope);
 
 // Delete one set row: drop its logged data and shrink the prescription.
+// Returns true when deleting it just finished the day (it was the last open set).
 export function deleteSet(pid, dayId, entry, setIdx) {
+  let just = false;
   const isWU = entry.sch.t === 'wuws' && setIdx < entry.wu;
   const patch = entry.sch.t === 'wuws'
     ? (isWU ? { wu: Math.max(0, entry.sch.wu - 1) } : { ws: Math.max(0, entry.sch.ws - 1) })
@@ -535,11 +537,15 @@ export function deleteSet(pid, dayId, entry, setIdx) {
     const pex = plan.ex || (plan.ex = {});
     pex[entry.key] = { ...(pex[entry.key] || {}), ...patch };
   });
+  // checked after the save, so the plan is read with the set already gone
+  store.update((s) => { just = maybeCompleteDay(s, pid, dayId); });
+  return just;
 }
 
 // Deleting an exercise's last set takes the exercise off that day (asked
 // first). It counts as settled, like a skip, and can be put back.
 export function removeExercise(pid, dayId, key) {
+  let just = false;
   store.update((s) => {
     const d = dayRec(s, pid, dayId);
     if (d.ex?.[key]) d.ex[key].sets = [];           // the deleted set's numbers go with it
@@ -548,8 +554,12 @@ export function removeExercise(pid, dayId, key) {
     const pex = plan.ex || (plan.ex = {});
     pex[key] = { ...(pex[key] || {}), removed: true };
   });
+  store.update((s) => { just = maybeCompleteDay(s, pid, dayId); });
+  return just;
 }
-export const restoreExercise = (pid, dayId, key) => patchPlan(pid, dayId, key, { removed: null }, 'day');
+// Putting it back brings the program's set count back too.
+export const restoreExercise = (pid, dayId, key) =>
+  patchPlan(pid, dayId, key, { removed: null, sets: null, wu: null, ws: null }, 'day');
 
 // "Only for this day" field changes; null clears them.
 export const saveDayFields = (pid, dayId, key, fields) => patchPlan(pid, dayId, key, { fields: fields || null }, 'day');

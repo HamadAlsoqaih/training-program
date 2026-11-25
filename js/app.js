@@ -112,8 +112,10 @@ function render(opts = {}) {
   // the next exercise just opened: glide to it (from where you were, not the top)
   if (opts.scrollNext) {
     const cur = view().querySelector('.ex.current');
-    if (cur) {
-      const r = cur.getBoundingClientRect();
+    const r0 = cur?.getBoundingClientRect();
+    if (cur && r0.height > 0) {                       // not inside a section you folded
+      window.dispatchEvent(new Event('glide'));
+      const r = r0;
       const top = window.scrollY + r.top - Math.max(90, (window.innerHeight - Math.min(r.height, window.innerHeight * 0.7)) / 2);
       window.scrollTo({ top: Math.max(0, top), behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
     }
@@ -207,14 +209,20 @@ document.addEventListener('keydown', (e) => {
 // keyboard's top edge was after it closes. While typing, the tab bar hides
 // (the keyboard covers it anyway); when the keyboard goes, a 1-px scroll
 // nudge makes iPhone put pinned bars back on the screen's bottom edge.
-const typing = (t) => t && (t.tagName === 'TEXTAREA' || t.tagName === 'SELECT'
+// (a picker isn't the keyboard: SELECT keeps focus after a choice)
+const typing = (t) => t && (t.tagName === 'TEXTAREA'
   || (t.tagName === 'INPUT' && !['checkbox', 'radio', 'button', 'range', 'color', 'file'].includes(t.type)));
+let gliding = 0;   // a smooth scroll to the next card is running: don't interrupt it
+window.addEventListener('glide', () => { gliding = Date.now(); });
 const settleBars = () => {
-  const y = window.scrollY;
-  window.scrollTo(0, y + 1); window.scrollTo(0, y);
+  if (Date.now() - gliding < 900) return;
+  const y = window.scrollY, max = document.documentElement.scrollHeight - window.innerHeight;
+  const d = y >= max - 1 ? -1 : 1;                  // at the very bottom, nudge up instead
+  window.scrollTo(0, y + d); window.scrollTo(0, y);
 };
 document.addEventListener('focusin', (e) => { if (typing(e.target)) document.body.classList.add('kb-open'); });
-document.addEventListener('focusout', () => {
+document.addEventListener('focusout', (e) => {
+  if (!typing(e.target) || !document.body.classList.contains('kb-open')) return;
   setTimeout(() => {
     if (typing(document.activeElement)) return;       // moved to the next box
     document.body.classList.remove('kb-open');

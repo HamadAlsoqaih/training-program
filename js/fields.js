@@ -23,10 +23,11 @@ export const BOX_STEP = 5;   // cm per − / + tap
 
 export function defaultFields(item, sch) {
   const ex = EX[item.ex] || {};
-  const base = ex.noload
-    ? { weight: false, reps: false, box: false, timer: false }
-    : sch.t === 'time'
-      ? { weight: false, reps: false, box: false, timer: true }
+  // a timed item always has its timer (warm-ups, breathing and stretches too)
+  const base = sch.t === 'time'
+    ? { weight: false, reps: false, box: false, timer: true }
+    : ex.noload
+      ? { weight: false, reps: false, box: false, timer: false }
       : { weight: true, reps: true, box: false, timer: false };
   return { ...base, ...(ex.fields || {}) };
 }

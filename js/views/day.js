@@ -269,7 +269,8 @@ export function renderDay(pid, dayId, rerender) {
     let i = 0;
     while (i < entries.length) {
       const e = entries[i];
-      if (e.removed) { i++; continue; }          // taken off this day — listed below the cards
+      // a superset is grouped first, so a removed member keeps its place in the
+      // group's order (data-iis) and comes back next to its partner
       if (e.item.ss && entries[i + 1]?.item.ss === e.item.ss) {
         const group = h('div', { class: 'ss-group', 'data-sortable': '' },
           h('span', { class: 'ss-label' }, 'Superset'));
@@ -283,6 +284,8 @@ export function renderDay(pid, dayId, rerender) {
         group.dataset.iis = iis.join(',');
         if (group.querySelector('.ex')) list.append(group);   // both removed: no empty box
         i = j;
+      } else if (e.removed) {
+        i++;                                     // taken off this day — listed below the cards
       } else {
         const card = buildCard(ctx, e, i, entries.length);
         card.setAttribute('data-sortable', '');
@@ -494,6 +497,7 @@ function setOpen(ctx, entry, open) {
 // After any change: if the next set moved to another exercise, redraw and
 // bring that card into view; otherwise just refresh this card.
 function afterChange(ctx, key) {
+  if (!ctx.container.isConnected) return;     // you've left this day (a hold timer ended later)
   const nowActive = nextSet(ctx.pid, ctx.dayId)?.entry.key ?? null;
   if (nowActive !== ctx.activeKey) { ctx.rerender({ keepScroll: true, scrollNext: true }); return; }
   refreshCard(ctx, key);
@@ -578,7 +582,7 @@ function exerciseCard(ctx, entry, pos, count) {
       alt && !isArmChoice ? h('div', { class: 'chip info', style: 'margin-top:4px' }, `↔ ${alt}`) : null,
       h('div', { class: 'ex-meta' },
         h('span', {}, h('b', {},
-          sch.t === 'time' && effSecs !== sch.secs ? `${sch.sets}×${fmtSecs(effSecs)}` : schemeLabel(sch)),
+          sch.t === 'time' && effSecs != null && effSecs !== sch.secs ? `${sch.sets}×${fmtSecs(effSecs)}` : schemeLabel(sch)),
           sch.t === 'sr' ? ' reps' : '',
           item.side ? h('span', { class: 'faint' }, ' each side') : null,
         ),
@@ -744,7 +748,9 @@ function askDeleteSet(ctx, entry, i) {
   const { pid, dayId } = ctx;
   const ex = EX[entry.item.ex];
   const st = store.day(dayId, pid)?.ex?.[entry.key]?.sets?.[i];
-  const lastOne = entry.sets <= 1;
+  const isWU = entry.sch.t === 'wuws' && i < entry.wu;
+  // the last set — or the only working set (warm-ups alone aren't an exercise)
+  const lastOne = entry.sets <= 1 || (entry.sch.t === 'wuws' && !isWU && entry.sch.ws <= 1);
   const logged = [st?.weight != null ? `${st.weight} kg` : null, st?.reps != null ? `× ${st.reps}` : null,
     st?.box != null ? `box ${st.box} cm` : null].filter(Boolean).join(' ');
   openSheet(
@@ -760,12 +766,13 @@ function askDeleteSet(ctx, entry, i) {
           closeSheet();
           if (lastOne) {
             editingSets.delete(cardKey(ctx, entry.key));
-            removeExercise(pid, dayId, entry.key);
+            const done = removeExercise(pid, dayId, entry.key);
             toast(`${ex.name} removed from this day`);
+            if (done) { onDayCompleted(pid, dayId, ctx.rerender); return; }
             ctx.rerender({ keepScroll: true });
             return;
           }
-          deleteSet(pid, dayId, entry, i);
+          if (deleteSet(pid, dayId, entry, i)) { onDayCompleted(pid, dayId, ctx.rerender); return; }
           afterChange(ctx, entry.key);
         },
       }, lastOne ? 'Remove' : 'Delete')),
@@ -840,6 +847,7 @@ function numBox({ value, placeholder, decimal, onSave }) {
     placeholder, value: value ?? '', class: 'numbox',
   });
   let good = el.value;
+  el.addEventListener('focus', () => { good = el.value; });   // steppers / carry-down set it directly
   el.addEventListener('input', () => {
     const lat = toLatin(el.value);
     const ok = decimal ? /^\d*\.?\d*$/.test(lat) : /^\d*$/.test(lat);
@@ -969,17 +977,17 @@ function setRow(ctx, entry, i, last, f, bump, editing) {
     boxesOf('weight')[i] = wIn;
     if (many) parts.push(wIn); else parts.push(stepper(wIn, -2.5, 'weight'), wIn, stepper(wIn, 2.5, 'weight'));
   }
-  if (f.reps) {
-    rIn = numBox({ value: st?.reps, placeholder: sch.reps != null ? String(sch.reps) : 'reps', decimal: false, onSave: saveLog });
-    parts.push(rIn, h('span', { class: 'unit' }, 'REPS'));
-  }
   if (f.box) {
     bIn = numBox({ value: st?.box ?? prevSet?.box, placeholder: 'cm', decimal: true,
       onSave: () => { saveLog(); carryDown('box', bIn); } });
     boxesOf('box')[i] = bIn;
     if (!f.weight && !many) parts.push(stepper(bIn, -BOX_STEP, 'box'), bIn, stepper(bIn, BOX_STEP, 'box'));
     else parts.push(bIn);
-    parts.push(h('span', { class: 'unit' }, f.box === 'down' ? 'CM ↓' : 'CM ↑'));
+    parts.push(h('span', { class: 'unit' }, f.box === 'down' ? 'CM↓' : 'CM↑'));
+  }
+  if (f.reps) {
+    rIn = numBox({ value: st?.reps, placeholder: sch.reps != null ? String(sch.reps) : 'reps', decimal: false, onSave: saveLog });
+    parts.push(rIn, h('span', { class: 'unit' }, 'REPS'));
   }
 
   const row = h('div', { class: 'setrow' }, tick,

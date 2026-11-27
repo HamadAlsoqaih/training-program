@@ -114,7 +114,6 @@ function render(opts = {}) {
     const cur = view().querySelector('.ex.current');
     const r0 = cur?.getBoundingClientRect();
     if (cur && r0.height > 0) {                       // not inside a section you folded
-      window.dispatchEvent(new Event('glide'));
       const r = r0;
       const top = window.scrollY + r.top - Math.max(90, (window.innerHeight - Math.min(r.height, window.innerHeight * 0.7)) / 2);
       window.scrollTo({ top: Math.max(0, top), behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
@@ -205,38 +204,59 @@ document.addEventListener('keydown', (e) => {
 });
 
 // --- keyboard vs the tab bar (iPhone) ------------------------------------------
-// iPhone Home Screen apps can leave bottom-pinned bars floating where the
-// keyboard's top edge was after it closes. While typing, the tab bar hides
-// (the keyboard covers it anyway); when the keyboard goes, a 1-px scroll
-// nudge makes iPhone put pinned bars back on the screen's bottom edge.
-// (a picker isn't the keyboard: SELECT keeps focus after a choice)
+// iOS 26 Home Screen apps have a bug: after the keyboard closes, the app can
+// keep the SHORT height it had while the keyboard was up, so anything pinned
+// to the bottom (tab bar, rest timer) floats up by the keyboard's height.
+//   1. While typing, the tab bar steps aside (the keyboard covers it anyway).
+//   2. The app remembers its full height while no keyboard is up.
+//   3. After the keyboard leaves, if the height is still short, it asks iPhone
+//      to measure again; if that doesn't take, it moves the bars DOWN by the
+//      missing amount (--vv-drift) so they sit on the real bottom edge.
 const typing = (t) => t && (t.tagName === 'TEXTAREA'
   || (t.tagName === 'INPUT' && !['checkbox', 'radio', 'button', 'range', 'color', 'file'].includes(t.type)));
-let gliding = 0;   // a smooth scroll to the next card is running: don't interrupt it
-window.addEventListener('glide', () => { gliding = Date.now(); });
-const settleBars = () => {
-  if (Date.now() - gliding < 900) return;
-  const y = window.scrollY, max = document.documentElement.scrollHeight - window.innerHeight;
-  const d = y >= max - 1 ? -1 : 1;                  // at the very bottom, nudge up instead
-  window.scrollTo(0, y + d); window.scrollTo(0, y);
-};
-document.addEventListener('focusin', (e) => { if (typing(e.target)) document.body.classList.add('kb-open'); });
-document.addEventListener('focusout', (e) => {
-  if (!typing(e.target) || !document.body.classList.contains('kb-open')) return;
-  setTimeout(() => {
-    if (typing(document.activeElement)) return;       // moved to the next box
-    document.body.classList.remove('kb-open');
-    settleBars();
-  }, 120);
-});
-if (window.visualViewport) {
-  let wasShort = false;
-  window.visualViewport.addEventListener('resize', () => {
-    const short = window.visualViewport.height < window.innerHeight * 0.8;
-    if (wasShort && !short) setTimeout(settleBars, 60);   // keyboard just closed
-    wasShort = short;
-  });
+const standalone = navigator.standalone === true || matchMedia('(display-mode: standalone)').matches;
+const landscape = () => window.innerWidth > window.innerHeight;
+const fullH = { portrait: 0, landscape: 0 };       // the tallest height seen with no keyboard
+const root = document.documentElement;
+const setDrift = (px) => root.style.setProperty('--vv-drift', `${Math.max(0, Math.round(px))}px`);
+const keyboardUp = () => document.body.classList.contains('kb-open') || typing(document.activeElement);
+
+function measure() {
+  const h = window.innerHeight, o = landscape() ? 'landscape' : 'portrait';
+  if (keyboardUp()) { setDrift(0); return; }
+  if (h > fullH[o]) fullH[o] = h;
+  const missing = fullH[o] - h;
+  // a few px is the normal toolbar wobble; only a real shortfall is the bug
+  setDrift(standalone && missing > 24 ? missing : 0);
 }
+// make iPhone recompute the viewport: hide and show a full-height element
+function remeasure() {
+  if (keyboardUp()) return;
+  const app = document.getElementById('app');
+  const y = window.scrollY;
+  app.style.display = 'none';
+  void app.offsetHeight;                             // force the layout now
+  app.style.display = '';
+  window.scrollTo(0, y);
+  requestAnimationFrame(measure);
+}
+function afterKeyboard() {
+  document.body.classList.remove('kb-open');
+  measure();
+  if (standalone && parseFloat(getComputedStyle(root).getPropertyValue('--vv-drift')) > 0) remeasure();
+  // iPhone settles over a few hundred ms: look again
+  setTimeout(measure, 350); setTimeout(measure, 900);
+}
+document.addEventListener('focusin', (e) => { if (typing(e.target)) { document.body.classList.add('kb-open'); setDrift(0); } });
+document.addEventListener('focusout', (e) => {
+  if (!typing(e.target)) return;
+  setTimeout(() => { if (!typing(document.activeElement)) afterKeyboard(); }, 150);   // not just moving to the next box
+});
+window.addEventListener('resize', measure);
+window.addEventListener('orientationchange', () => setTimeout(measure, 300));
+window.visualViewport?.addEventListener('resize', measure);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') setTimeout(measure, 200); });
+measure();
 
 // re-check "today" when the app comes back to the foreground
 document.addEventListener('visibilitychange', () => {
